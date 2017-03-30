@@ -1,0 +1,110 @@
+#!/usr/bin/env python
+## Syncs the google drive to another drive so
+## Our editors and producers can screeen footage at the office
+## Google app only works with admin account this is our way of
+## Getting around this.
+##
+
+import subprocess
+import os
+import time
+
+# Checks to see if path is a mountpoint or not. Returns boolean
+def check_mount(path):
+
+    if os.path.ismount(path):
+        return True
+    else:
+        return False
+
+def check_tree(path):
+
+    _retro_shared = path + "_Retro_Shared" # build path to all important _retro_shared directory
+    # first check to see if this is the google drive
+    if not os.path.isdir(_retro_shared):
+        return False    # no _Retro_Shared directory. not the google drive
+
+    # prepareing for second check
+    contents = os.listdir(path)    # list of elements in directory
+    compare = ["_Retro_Shared", ".google_drive_58"] # list to compare contents with
+    elements_found = 0  # varible containing number of matches
+
+    # second check to see if this is the google drive
+    for item in contents:   # loop through list of elemnts
+        if item in compare: # find matches with our compare list
+            elements_found = elements_found + 1
+
+    if compare >= elements_found:
+        return True
+    else:
+        return False
+
+def main():
+
+    go = False  # boolean to check weather or not we have the google drive availible
+    google_drive = "/Volumes/Google Drive/"  # first location of google drive
+    google_drive_2 = "/Volumes/Google Drive 1/" # possible second location of google drive
+    faux_drive = "/Volumes/Faux_Google_Drive"
+    faux_drive_2 = "/Volumes/Faux_Google_Drive 1"
+
+    # Check if google drive is mounted
+    if check_mount(google_drive) and check_tree(google_drive):
+        go = True   # we have the drive so we can go ahead
+        source_path = '"' + google_drive + '"' # put in the corrrect path wrap in quotes in case of spaces
+    elif check_mount(google_drive_2) and check_tree(google_drive_2):   # if not found at first location try 2nd
+        go = True
+        source_path = '"' + google_drive_2 + '"'
+    else:
+        go = False  # Drive is not here we cannont go on
+        exit()
+
+    if check_mount(faux_drive):
+        go = True   # Destination drive is here go on
+        dest_path = '"' + faux_drive + '"' # put in the correct path for destination wrap in quotes for spaces
+    elif check_mount(faux_drive_2):
+        go = True
+        dest_path = '"' + faux_drive_2 + '"'
+    else:
+        go = False  # No destination drive stop
+        exit()
+
+    if go:
+        # Preparing to run rsync
+        # put permissions option in a string for easy readability
+        chmod = "o+r,o-w,o-x"
+        # Put our command in a string
+        cmd = """rsync -turDlv --progress --recursive --exclude=".*" --chmod="%s" --perms --delete %s %s""" % (
+            chmod, source_path, dest_path
+        )
+
+        # Run rsync
+        proc = subprocess.Popen(cmd,
+                            shell=True,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            )
+
+        rsync_says = proc.communicate()[0]
+        print rsync_says
+
+        # Put a file with current date and time so peeps know when the last sync was
+        # Create the file name
+        file_name = "__Last_Sync_Time_With_Google_Drive__"
+        date = time.strftime("%y_%m_%d__")  # grab the date as string
+        tyme = time.strftime("%H:%M")   # grab the time as string
+        file_name = file_name + date + tyme # put the file name together
+        cmd = "touch " + dest_path[1:-1] + "/" + file_name # build command with destination path (without the quotes)
+        # run touch to put the file in place
+        proc = subprocess.Popen(cmd,
+                            shell=True,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            )
+
+        touch_says = proc.communicate()[0]
+        print touch_says
+    else:
+        exit()
+
+if __name__ == "__main__":
+    main();
