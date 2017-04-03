@@ -437,6 +437,7 @@ def screener_process(source, asset, trimmed, verbosity):
         return False
 def main():
 
+
     print "" # a nice blank space after the user puts in all the input
     # get arguments set up
     unpack = set_argparse() # returns list of parsed arguments and the parser itself

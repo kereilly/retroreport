@@ -1,6 +1,7 @@
 # just some functions many retro scripts will use
 
 import sys
+import os.path
 
 
 # Classes that need to work accross modules
@@ -51,9 +52,13 @@ class to_trim(object):
     false = 0
     true = 1
 
-def openfile(path):
+def open_file(path, mode = "r"):
 
-    print "do something"
+    if os.path.isfile(path):
+        processed_file = open(path, mode)
+        return processed_file
+    else:
+        return volume_result.not_found
 
 def parse_asset_label(asset_label):
     """
@@ -84,7 +89,7 @@ def parse_asset_label(asset_label):
 
         print "So I can't find the asset number and RR number in the label"
         print "I cannot continue under these conditions"
-        print "I hate you"
+        print "Your the kind of person that misses his/her first day of work!"
         exit()
 
 def main():
