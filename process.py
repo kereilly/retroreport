@@ -2,6 +2,7 @@
 
 import sys
 import os.path
+import parsedatetime.parsedatetime as pdt
 
 
 # Classes that need to work accross modules
@@ -91,6 +92,32 @@ def parse_asset_label(asset_label):
         print "I cannot continue under these conditions"
         print "Your the kind of person that misses his/her first day of work!"
         exit()
+
+## takes a string returns a python date
+def datetimeFromString(s):
+
+    c = pdt.Calendar()
+    result, what = c.parse(s)
+
+    dt = None
+
+    # what was returned (see http://code-bear.com/code/parsedatetime/docs/)
+    # 0 = failed to parse
+    # 1 = date (with current time, as a struct_time)
+    # 2 = time (with current date, as a struct_time)
+    # 3 = datetime
+    if what in (1,2):
+        # result is struct_time
+        dt = datetime.datetime(*result[:6])
+    elif what == 3:
+        # result is a datetime
+        dt = result
+
+    if dt is None:
+        # Failed to parse
+        raise ValueError, ("Don't understand date '"+s+"'")
+
+    return dt
 
 def main():
     print "Can't be run as main()"

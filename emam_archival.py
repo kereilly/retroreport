@@ -7,8 +7,10 @@
 import csv
 import argparse
 import os.path
+import parsedatetime
 from retrosupport import process
 from retrosupport.process import volume_result
+from retrosupport.process import datetimeFromString
 
 def set_argparse():
 
@@ -24,7 +26,7 @@ def set_argparse():
     group_batch = parser.add_argument_group("Batch Download", "Arguments for Batch Downloading")
     group_batch.add_argument("-i", "--input", type=str,
                              help="Specify a CSV file for batch download")
-    group_batch.add_argument("-m", "--multi-thread", action="store_true", help="Enable multi-threaded downloads")
+    group_batch.add_argument("-m", "--multi_thread", action="store_true", help="Enable multi-threaded downloads")
     group_batch.add_argument("-d", "--output_directory", type=str,
                              help="Specify output directory to save to. Should already exist "
                                   "I won't make the Directory for you. Or maybe I will. Hmmmm.")
@@ -90,6 +92,52 @@ def check_args(args):
               + args.output_directory + " please specifiy a valid directory to save to"
         exit()  # Cuz we have nowhere to put anything
 
+## parse the epected date format from google sheets YYYY MMM DD
+def parse_date(string, v = 1):
+
+    ## split the string into a list seperated by spaces
+    elements = string.split()
+
+    ## touble shooting
+    if v >= 3:
+
+        print "\nraw string sent to parse_date:\n " + string
+        print "String broken into elements: \n"
+        print elements
+
+    dictdate = {'year': elements[0], 'month': 11, 'day': elements[2]} ## make our dictionary
+    if elements[1].lower() in ("jan", "january"):
+        dictdate['month'] = "01"
+    elif elements[1].lower() in ("feb", "february"):
+        dictdate['month'] = "02"
+    elif elements[1].lower() in ("mar", "march"):
+        dictdate['month'] = "03"
+    elif elements[1].lower() in ("apr", "april"):
+        dictdate['month'] = "04"
+    elif elements[1].lower() == "may":
+        dictdate['month'] = "05"
+    elif elements[1].lower() in ("jun", "june"):
+        dictdate['month'] = "06"
+    elif elements[1].lower() in ("jul", "july"):
+        dictdate['month'] = "07"
+    elif elements[1].lower() in ("aug", "august"):
+        dictdate['month'] = "08"
+    elif elements[1].lower() in ("sep", "september"):
+        dictdate['month'] = "09"
+    elif elements[1].lower() in ("oct", "october"):
+        dictdate['month'] = "10"
+    elif elements[1].lower() in ("nov", "november"):
+        dictdate['month'] = "11"
+    elif elements[1].lower() in ("dec", "december"):
+        dictdate['month'] = "12"
+    else:                       ## text not standard month. Make it unknown
+        dictdate['month'] = "11"
+
+    if v >= 3:
+        print dictdate
+
+    return dictdate
+
 
 def main():
 
@@ -103,6 +151,12 @@ def main():
     verbosity = args.verbosity
     path = args.input
 
+    # Multithreading not supported yet. Warn user if enabled
+    if args.multi_thread:
+        print "You enabled Multithreading. At this point it is not supported but hopefully soon"
+        print "The -m flag will be ignored\n"
+
+
     ## put all our jobs from the csv file into an array
     jobs = csv_process(path, verbosity)
     print str(len(jobs)) + " jobs to process"
@@ -112,10 +166,22 @@ def main():
 
     # Loop through the list and process each job
     for job in jobs:
+        ## parse date field
+        if job[3] == "":
+            if verbosity >= 2:
+                print "No date entry. Putting in 1111_11_11"
+            textdate = "11 NOV 1111"
+        else:
+            textdate = job[3]
+
+        dictdates = parse_date(textdate)
+
         file_name = job[2]
         url = job[6]
-        print "file name is: " + file_name
-        print "url is: " + url
+        print "Raw date is: " + job[3]
+        print dictdates
+        print ""
+
 
 
 
