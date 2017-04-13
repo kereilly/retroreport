@@ -30,6 +30,8 @@ def set_argparse():
     group_batch.add_argument("-d", "--output_directory", type=str,
                              help="Specify output directory to save to. Should already exist "
                                   "I won't make the Directory for you. Or maybe I will. Hmmmm.")
+    group_batch.add_argument("-r", "--project_id", type=str,
+                             help="Override the Google Sheets provided project ID")
     # now regular arguments
     parser.add_argument("-v", "--verbosity", type=int, default=1, choices=[0, 1, 2, 3],
                         help="Increase, 2, or decrease, 0, the level of output. 3 is debug mode. Default is 1")
@@ -138,6 +140,65 @@ def parse_date(string, v = 1):
 
     return dictdate
 
+## replace spaces with '_' and '/' with '-' and take out quotes
+def format_string(string):
+
+    return_string = string.replace(" ", "_")
+    return_string = return_string.replace("/", "-")
+    return_string = return_string.replace('"', "")
+    return_string = return_string.replace("'", "")
+    return_string = return_string.replace(';', "")
+    return_string = return_string.replace(",", "")
+
+    return return_string
+
+## unelegantly create our standard asset label from the number
+def pad_asset(asset, v = 1):
+
+    if len(asset) == 1:
+        return_asset = "A00" + asset
+        if v >=3:
+            print "\nOriginal Asset Variable: " + asset
+            print "Modified Asset Variable: " + return_asset
+    elif len(asset) == 2:
+        return_asset = "A0" + asset
+        if v >=3:
+            print "\nOriginal Asset Variable: " + asset
+            print "Modified Asset Variable: " + return_asset
+    elif len(asset) == 3:
+        return_asset = "A" + asset
+        if v >=3:
+            print "\nOriginal Asset Variable: " + asset
+            print "Modified Asset Variable: " + return_asset
+    else:
+        return_asset = "A1000"
+
+    return return_asset
+
+def create_metadata(job, project_id, v = 1):
+
+
+    ## pad asset number
+    asset_number = pad_asset(job[0], v)
+    ## parse date field
+    if job[3] == "":
+        if v >= 2:
+            print "No date entry. Putting in 1111_11_11"  ## this is the entry meaning we don't know the date
+        textdate = "1111 NOV 11"
+    else:
+        textdate = job[3]
+    dictdate = parse_date(textdate)
+
+    ## build filename
+    file_name = project_id + "_" + asset_number + "_" + dictdate['year'] + "_" + dictdate['month']\
+                + "_" + dictdate['day'] + "_" + format_string(job[1]) + "_" + format_string(job[2])
+
+    ## create our dictionary
+    metadata = {'file_name':file_name, 'date':dictdate, 'source':job[1], 'source_id':job[2], 'description':job[4],
+                'link':job[5], 'in':job[6], 'out':job[7], 'notes':job[8], 'copy_holder':job[9], 'license_status':job[10],
+                'copyright_status':job[11], 'project_id':project_id, 'asset_number':job[0], 'formated_asset_number': asset_number}
+
+    return metadata
 
 def main():
 
@@ -158,29 +219,48 @@ def main():
 
 
     ## put all our jobs from the csv file into an array
-    jobs = csv_process(path, verbosity)
-    print str(len(jobs)) + " jobs to process"
 
-    downloaded = [] # create array to hold results of the sucessful download
-    failed = [] # create array to hold the failed attempts
+    csv_dump = csv_process(path, verbosity) # ingest the csv file
+    csv_first_pass = [] # create our list to put jobs in
 
-    # Loop through the list and process each job
+    ## check the project ID
+    if args.project_id == None:
+        project_id = csv_dump[0][0] # extract the project ID number
+        if verbosity >= 3:
+            print "Using google sheet provided project id: " + project_id
+    else:
+        project_id = args.project_id
+        if verbosity >= 3:
+            print "Using user provided provided project id: " + project_id
+
+    if project_id == "unknown":
+        print "The Google Sheet JavaScript did not provide a project ID"
+        print "Specify your own project ID with the -r flag. Downloader will not continue"
+        exit()
+    ## copy the rest of the list, everything except first element
+    after_first_item = False
+    for item in csv_dump:
+        if after_first_item:
+            csv_first_pass.append(item)
+        after_first_item = True # need to mark we passed the first item
+
+    print str(len(csv_first_pass)) + " jobs to process"
+
+    # create job tuple
+    jobs = []
+    # Loop through the list and format each job
+    for item in csv_first_pass:
+
+        # put all our meta data in a nice dictionary
+        metadata = create_metadata(item, project_id, verbosity)
+        print "File name for asset " + item[0] + " is: " + metadata['file_name']
+        jobs.append(metadata)
+
     for job in jobs:
-        ## parse date field
-        if job[3] == "":
-            if verbosity >= 2:
-                print "No date entry. Putting in 1111_11_11"
-            textdate = "11 NOV 1111"
-        else:
-            textdate = job[3]
+        print job
 
-        dictdates = parse_date(textdate)
 
-        file_name = job[2]
-        url = job[6]
-        print "Raw date is: " + job[3]
-        print dictdates
-        print ""
+
 
 
 
