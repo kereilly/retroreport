@@ -94,6 +94,37 @@ def check_args(args):
               + args.output_directory + " please specifiy a valid directory to save to"
         exit()  # Cuz we have nowhere to put anything
 
+def month_text_to_number(string):
+
+    if string.lower() in ("jan", "january"):
+        string = "01"
+    elif string.lower() in ("feb", "february"):
+        string = "02"
+    elif string.lower() in ("mar", "march"):
+        string = "03"
+    elif string.lower() in ("apr", "april"):
+        string = "04"
+    elif string.lower() == "may":
+        string = "05"
+    elif string.lower() in ("jun", "june"):
+        string = "06"
+    elif string.lower() in ("jul", "july"):
+        string = "07"
+    elif string.lower() in ("aug", "august"):
+        string = "08"
+    elif string.lower() in ("sep", "september"):
+        string = "09"
+    elif string.lower() in ("oct", "october"):
+        string = "10"
+    elif string.lower() in ("nov", "november"):
+        string = "11"
+    elif string.lower() in ("dec", "december"):
+        string = "12"
+    else:  ## text not standard month. Make it unknown
+        string = "11"
+
+    return string
+
 ## parse the epected date format from google sheets YYYY MMM DD
 def parse_date(string, v = 1):
 
@@ -102,38 +133,38 @@ def parse_date(string, v = 1):
 
     ## touble shooting
     if v >= 3:
-
         print "\nraw string sent to parse_date:\n " + string
-        print "String broken into elements: \n"
+        print "String broken into elements:"
         print elements
 
-    dictdate = {'year': elements[0], 'month': 11, 'day': elements[2]} ## make our dictionary
-    if elements[1].lower() in ("jan", "january"):
-        dictdate['month'] = "01"
-    elif elements[1].lower() in ("feb", "february"):
-        dictdate['month'] = "02"
-    elif elements[1].lower() in ("mar", "march"):
-        dictdate['month'] = "03"
-    elif elements[1].lower() in ("apr", "april"):
-        dictdate['month'] = "04"
-    elif elements[1].lower() == "may":
-        dictdate['month'] = "05"
-    elif elements[1].lower() in ("jun", "june"):
-        dictdate['month'] = "06"
-    elif elements[1].lower() in ("jul", "july"):
-        dictdate['month'] = "07"
-    elif elements[1].lower() in ("aug", "august"):
-        dictdate['month'] = "08"
-    elif elements[1].lower() in ("sep", "september"):
-        dictdate['month'] = "09"
-    elif elements[1].lower() in ("oct", "october"):
-        dictdate['month'] = "10"
-    elif elements[1].lower() in ("nov", "november"):
-        dictdate['month'] = "11"
-    elif elements[1].lower() in ("dec", "december"):
-        dictdate['month'] = "12"
-    else:                       ## text not standard month. Make it unknown
-        dictdate['month'] = "11"
+    months = ["dec", "december", "nov", "november", "oct", "october", "sep", "september",
+              "aug", "august", "jul", "july", "jun", "june", "may", "apr", "april",
+              "mar", "march", "feb", "february", "jan", "january"]
+
+    dictdate = {'year': "1111", 'month': "11", 'day': "11"} # create date dictionary. seed with our "unknown date"
+
+
+    ## go through possible date formats
+    if len(elements) == 3:      # what we should get
+        dictdate['year'] = elements[0]
+        dictdate['month'] = month_text_to_number(elements[1])
+        dictdate['day'] = elements[2]
+    elif len(elements) == 1:    # just a year maybe?
+        if len(elements[0]) == 4:
+            dictdate['year'] = elements[0]
+    elif len(elements) == 2:    # month and year?
+        for item in elements:
+            if len(item) == 4:
+                dictdate['year'] = item
+            # check for months
+            if item in months:
+                dictdate['month'] = month_text_to_number(item)
+
+            if item.isdigit():
+                if int(item) <= 12: # can't b more than 12. value will be ignored if so
+                    if len(item) == 1:
+                        item = "0" + item   # month is only 1 digit pad with string
+                    dictdate['month'] = item
 
     if v >= 3:
         print dictdate
