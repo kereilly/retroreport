@@ -7,10 +7,10 @@
 import csv
 import argparse
 import os.path
-import parsedatetime
 from retrosupport import process
 from retrosupport.process import volume_result
 from retrosupport.process import datetimeFromString
+from retrosupport.retro_dl import retro_youtube_dl
 
 def set_argparse():
 
@@ -37,6 +37,10 @@ def set_argparse():
                         help="Increase, 2, or decrease, 0, the level of output. 3 is debug mode. Default is 1")
     parser.add_argument("-p", "--premiere", action="store_true", help="Convert media automatically if it is "
                             "not premiere compatible")
+
+    parser.add_argument("-g", "--google_screener", action="store_true", help="Create mp4's for the google drive")
+
+    parser.add_argument("-x", "--screener_location", type=str, help="Overide where the screeners are made")
 
     # have argparse do its thing
     args = parser.parse_args()
@@ -227,9 +231,21 @@ def create_metadata(job, project_id, v = 1):
     ## create our dictionary
     metadata = {'file_name':file_name, 'date':dictdate, 'source':job[1], 'source_id':job[2], 'description':job[4],
                 'link':job[5], 'in':job[6], 'out':job[7], 'notes':job[8], 'copy_holder':job[9], 'license_status':job[10],
-                'copyright_status':job[11], 'project_id':project_id, 'asset_number':job[0], 'formated_asset_number': asset_number}
+                'copyright_status':job[11], 'project_id':project_id, 'asset_number':job[0], 'formated_asset_number': asset_number,
+                 'downloaded':False}
 
     return metadata
+
+def download_video(job, download_location, verbosity = 1,):
+
+    if verbosity >= 1:
+        print "Working on: " + job['project_id'] + "_" + job['formated_asset_number']
+
+    # Download file and store results
+    result = retro_youtube_dl(job['link'], download_location, job['file_name'], verbosity)
+
+    # Return results
+    return result
 
 def main():
 
@@ -241,17 +257,16 @@ def main():
 
     check_args(args)
     verbosity = args.verbosity
-    path = args.input
+    csv_path = args.input
 
     # Multithreading not supported yet. Warn user if enabled
     if args.multi_thread:
         print "You enabled Multithreading. At this point it is not supported but hopefully soon"
         print "The -m flag will be ignored\n"
 
-
     ## put all our jobs from the csv file into an array
 
-    csv_dump = csv_process(path, verbosity) # ingest the csv file
+    csv_dump = csv_process(csv_path, verbosity) # ingest the csv file
     csv_first_pass = [] # create our list to put jobs in
 
     ## check the project ID
@@ -268,35 +283,39 @@ def main():
         print "The Google Sheet JavaScript did not provide a project ID"
         print "Specify your own project ID with the -r flag. Downloader will not continue"
         exit()
-    ## copy the rest of the list, everything except first element
+    # copy the rest of the list, everything except first element
     after_first_item = False
     for item in csv_dump:
         if after_first_item:
             csv_first_pass.append(item)
-        after_first_item = True # need to mark we passed the first item
+        after_first_item = True  # need to mark we passed the first item
 
     print str(len(csv_first_pass)) + " jobs to process"
 
     # create job tuple
     jobs = []
+    # number of jobs with links
+    links = 0
     # Loop through the list and format each job
     for item in csv_first_pass:
 
         # put all our meta data in a nice dictionary
         metadata = create_metadata(item, project_id, verbosity)
-        print "File name for asset " + item[0] + " is: " + metadata['file_name']
         jobs.append(metadata)
+        if item[5] != "":   # Count the number of lines with links
+            links = links + 1
 
+    if verbosity >= 2:  # Some feedback for our user
+        print "\n" + str(len(jobs)) + " entries submitted, " + str(links) + " with links to download:"
+        for job in jobs:
+            if job['link'] != "":
+                print "\tFile name for asset " + job['asset_number'] + " is: " + job['file_name']
+
+    location = args.output_directory + "/"
+    # download the video
     for job in jobs:
-        print job
-
-
-
-
-
-
-
-
+        if job['link'] != "":
+            download = download_video(job, location, verbosity)
 
 if __name__ == "__main__":
     main();
