@@ -8,7 +8,9 @@ import csv
 import argparse
 import os.path
 import xlsxwriter
+import retrosupport
 from retrosupport import process
+from retrosupport import media
 from retrosupport.process import volume_result
 from retrosupport.retro_dl import retro_youtube_dl
 
@@ -69,7 +71,7 @@ def csv_process(path, verbosity=1):
         return jobs_list
 
 
-# check to see if the user inputed good stuff
+# check to see if the user input good stuff
 def check_args(args):
     # check and make sure csv file is good
     if args.input is None:
@@ -81,7 +83,6 @@ def check_args(args):
         print ("The file you specified at: " + args.input + " is not valid")
         print ("Please specify a valid csv file")
         exit()  # with no csv file there is nothing to do
-
 
     # check and make sure output directory is good
     if args.output_directory is None:
@@ -221,13 +222,13 @@ def create_metadata(job, project_id, v=1):
 
     # build filename
     file_name = project_id + "_" + asset_number + "_" + dictdate['year'] + "_" + dictdate['month'] \
-                + "_" + dictdate['day'] + "_" + format_string(job[1]) + "_" + format_string(job[2])
+        + "_" + dictdate['day'] + "_" + format_string(job[1]) + "_" + format_string(job[2])
 
     # create our dictionary
     metadata = {'file_name': file_name, 'date': dictdate, 'source': job[1], 'source_id': job[2], 'description': job[4],
                 'link': job[5], 'in': job[6], 'out': job[7], 'notes': job[8], 'copy_holder': job[9], 'location': "",
                 'license_status': job[10], 'copyright_status': job[11], 'project_id': project_id,
-                'asset_number': job[0], 'formated_asset_number': asset_number, 'downloaded': False}
+                'asset_number': job[0], 'formated_asset_number': asset_number, 'downloaded': False, 'screener': False}
 
     return metadata
 
@@ -246,16 +247,17 @@ def download_video(job, download_location, verbosity=1, ):
 
 # Create an excel spreadsheet
 def excel(jobs, download_location, v=1):
-    # type: (object, object, object) -> object
 
     file_location = download_location + 'Results.xlsx'
+    if v >= 3:
+        print ('Creating excel sheet at: ' + file_location)
+
+    # Create the workbook and sheet
     workbook = xlsxwriter.Workbook(file_location)
     workbook.set_size(1275, 1800)
     worksheet = workbook.add_worksheet('Retro Report')
 
     # Formatting
-    bold = workbook.add_format({'bold': True})
-
     header_format = workbook.add_format({
         'bold': True,
         'align': 'center',
@@ -268,7 +270,6 @@ def excel(jobs, download_location, v=1):
         'bold': True,
         'border': 6,
         'align': 'center',
-       # 'valign': 'vcenter',
         'fg_color': '#D7E4BC',
         'font_size': 44
     })
@@ -344,19 +345,143 @@ def excel(jobs, download_location, v=1):
             worksheet.write(row, 0, job['asset_number'], asset_success_format)
             worksheet.write(row, 2, job['file_name'], file_name_success_format)
             worksheet.write(row, 4, 'YES', download_success_format)
+            worksheet.write(row, 6, job['screener'], file_name_success_format)
         else:
             worksheet.write(row, 0, job['asset_number'], asset_fail_format)
             worksheet.write(row, 2, job['file_name'], file_name_fail_format)
             worksheet.write(row, 4, 'NO!', download_fail_format)
+            worksheet.write(row, 6, job['screener'], file_name_success_format)
         row = row + 1
 
     workbook.close()
 
 
+# check if we need to make a screener
+# and if user specified a location
+# return the location to make the screeners
+def check_screeners(args, v=1):
+
+    locations = None  # in case locations gets returned without being set to a path
+
+    if args.google_screener:
+        if args.screener_location is not None:
+            if args.screener_location != "":  # custom location overrides default
+                if v >= 1:
+                    print ("you specified '-g' and '-x' flags")
+                    print ("only one switch is necessary. Checking custom location")
+                if os.path.isdir(args.screener_location):
+                    if v >= 3:
+                        print ("using custom screener location:")
+                        print (args.screener_location)
+                    return args.screener_location
+                else:
+                    if v >= 2:
+                        print ("Custom Screener location is not a valid directory")
+                        print ("Reverting to default 'Google Drive' location if available")
+        locations = retrosupport.locate.google_drive(v)
+        # check and see if we found the google drive
+        if locations[0] == volume_result.not_found:
+            if v >= 1:
+                print ("No screener will be made Cannot find the Google Drive story path")
+                print ("Check to see if Google Drive is mounted")
+                return None
+        else:
+            # unpack google path list and return
+            return locations[2]
+
+    # No '-g' switch check for '-x'
+    else:
+        if args.screener_location is not None:
+            if args.screener_location != "":  # custom location overrides default
+                if os.path.isdir(args.screener_location):
+                    if v >= 3:
+                        print ("using custom screener location:")
+                        print (args.screener_location)
+                    # Path provided by user valid. return it
+                    return args.screener_location
+                else:
+                    if v >= 2:
+                        print ("Custom Screener location is not a valid directory")
+                    return None
+
+def google_drive_screener(job, path, v=1):
+
+    # Grab the Project ID from file name
+    project_id = retrosupport.process.parse_asset_label(job['file_name'])[0]
+    # Find google drive archival expects the full path to the story folders
+    # and Google Drive path in separate variables
+    screener_path = retrosupport.locate.find_google_drive_archival(
+        path[:21], path, project_id, v)
+
+    if screener_path == volume_result.not_found:
+        # we couldn't find the screener location in the Google Drive
+        if verbosity >= 1:
+            print ("Could not find story folder in google drive for: " + job['file_name'])
+            print ("No screener will be Made")
+        job['screener'] = False
+        return job
+    else:
+        # Find all files in our google drive location that have our asset number
+        # No need to duplicate media on the Google Drive
+        file_found_list = retrosupport.locate.find_asset(job['file_name'], screener_path)
+
+        # Now check the results. Make screener if no file found
+        if len(file_found_list) == 0:
+            # add file name to path
+            screener_path = screener_path + job['file_name']
+
+            # create the screener
+            if v >= 1:
+                print ("\nScreener media source:")
+                print (job['location'])
+            retrosupport.media.create_screener(job['location'], screener_path, v)
+            # Check and see if screener was really created
+            if os.path.isfile(screener_path + ".mp4"):
+                job['screener'] = True
+                return job
+        else:
+            if v >= 1:
+                print ("Looks like a screener already exists or there are duplicate asset #'s")
+            job['screener'] = "Duplicate"
+
+    return job
+
+
+# What to do with the file after its downloaded
+# Make screener, re-encode for compatibility, etc
+def post_download(args, job, rough_screener_path, v=1):
+
+    #  Check if we need to make a screener
+    if rough_screener_path is not None:
+        #  check if we need to run the old screener process
+        #  Search for archival screener location etc.
+        if rough_screener_path == "/Volumes/Google_Drive/_RETRO_SHARED/STORY_FOLDERS":
+            job = google_drive_screener(job, rough_screener_path, v)
+            return job
+        else:
+            # Custom download location
+            if rough_screener_path[-1:] == '/':    # we don't need to add a trailing slash
+                screener_path = rough_screener_path + job['file_name']
+            else:                           # We do need to add a trailing slash
+                screener_path = rough_screener_path + "/" + job['file_name']
+                print "coooasdgasgsadga"
+            # create the screener file
+            print screener_path
+            retrosupport.media.create_screener(job['location'], screener_path, v)
+            # Check and see if screener was really created
+            if os.path.isfile(screener_path + ".mp4"):
+                job['screener'] = True
+                return job
+            else:
+                job['screener'] = False
+
+    return job
+
 def main():
     print ("")  # a nice blank space after the user puts in all the input
     # get arguments set up
     unpack = set_argparse()  # returns list of parsed arguments and the parser itself
+
     #    parser = unpack[0]  # unpack the parser
     args = unpack[1]  # unpack the parsed args
 
@@ -370,7 +495,6 @@ def main():
         print ("The -m flag will be ignored\n")
 
     # put all our jobs from the csv file into an array
-
     csv_dump = csv_process(csv_path, verbosity)  # ingest the csv file
     csv_first_pass = []  # create our list to put jobs in
 
@@ -398,10 +522,14 @@ def main():
 
     print (str(len(csv_first_pass)) + " jobs to process")
 
-    # create job tuple
-    jobs = []
-    # number of jobs with links
-    links = 0
+    jobs = []  # create job list
+    processed_jobs = []   # create list to hold processed jobs
+    links = 0  # hold the number of jobs with links
+
+    # Variable to determine if me make screeners or not
+    # Value is none if not. Path for screener location if yes
+    screeners = check_screeners(args, verbosity)
+
     # Loop through the list and format each job
     for item in csv_first_pass:
 
@@ -417,14 +545,11 @@ def main():
             if job['link'] != "":
                 print ("\tFile name for asset " + job['asset_number'] + " is: " + job['file_name'])
 
-    # put save location in varialble. append trailing '/' if it does not exist.
+    # put save location in variable. append trailing '/' if it does not exist.
     if args.output_directory[:0] == "/":
         location = args.output_directory
     else:
         location = args.output_directory + "/"
-
-    # create list to hold processed jobs
-    processed_jobs = []
 
     # download the videos in a loop
     for job in jobs:
@@ -437,17 +562,23 @@ def main():
             if download == 0:  # download failed
                 job['downloaded'] = False
                 processed_jobs.append(job)
-            else:  # Success! store the results
-                job['downloaded'] = True
-                job['location'] = download
-                processed_jobs.append(job)
+            else:  # Double Check make sure file is there
+                if os.path.isfile(download):    # Success! store the results
+                    job['downloaded'] = True
+                    job['location'] = download
+                    job = post_download(args, job, screeners, verbosity)
+                    processed_jobs.append(job)
+                else:
+                    job['downloaded'] = False   # files doesn't exists so no download
+                    processed_jobs.append(job)
         else:
             job['downloaded'] = False  # No link so mark as failed download
             processed_jobs.append(job)
             print ("\nSkipping " + job['file_name'] + "has no link")
 
     excel(processed_jobs, location, verbosity)
-
+    for job in processed_jobs:
+        print job
 
 if __name__ == "__main__":
     main()
