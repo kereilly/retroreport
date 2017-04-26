@@ -73,6 +73,7 @@ def ffprobe(media, media_type="all"):
     else:               # all the fucking streams
         cmd = "ffprobe -v quiet -print_format json -show_format -show_streams %s" % media
 
+    cmd = str(cmd)
     proc = subprocess.Popen(cmd,
                             shell=True,
                             stdin=subprocess.PIPE,
