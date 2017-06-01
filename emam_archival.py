@@ -127,9 +127,10 @@ def month_text_to_number(string):
     return string
 
 
-# parse the epected date format from google sheets YYYY MMM DD
+# parse the expected date format from google sheets YYYY MMM DD
 def parse_date(string, v=1):
-    # split the string into a list seperated by spaces
+
+    # split the string into a list separated by spaces
     elements = string.split()
 
     # touble shooting
@@ -142,7 +143,7 @@ def parse_date(string, v=1):
               "aug", "august", "jul", "july", "jun", "june", "may", "apr", "april",
               "mar", "march", "feb", "february", "jan", "january"]
 
-    dictdate = {'year': "1111", 'month': "11", 'day': "11"}  # create date dictionary. seed with our "unknown date"
+    dictdate = {'year': "", 'month': "", 'day': ""}  # create date dictionary. seed with our "unknown date"
 
     # go through possible date formats
     if len(elements) == 3:  # what we should get
@@ -157,16 +158,17 @@ def parse_date(string, v=1):
             if len(item) == 4:
                 dictdate['year'] = item
             # check for months
-            if item in months:
+            elif item in months:
                 dictdate['month'] = month_text_to_number(item)
 
-            if item.isdigit():
+            elif item.isdigit():
                 if int(item) <= 12:  # can't b more than 12. value will be ignored if so
                     if len(item) == 1:
                         item = "0" + item  # month is only 1 digit pad with string
                     dictdate['month'] = item
 
     if v >= 3:
+        print ("Post dictdate process")
         print (dictdate)
 
     return dictdate
@@ -184,7 +186,7 @@ def format_string(string):
     return return_string
 
 
-# unelegantly create our standard asset label from the number
+# create our standard asset label from the number
 def pad_asset(asset, v=1):
     if len(asset) == 1:
         return_asset = "A00" + asset
@@ -202,27 +204,34 @@ def pad_asset(asset, v=1):
             print ("\nOriginal Asset Variable: " + asset)
             print ("Modified Asset Variable: " + return_asset)
     else:
-        return_asset = "A1000"
+        return_asset = "A"
 
     return return_asset
 
 
 # Put the meta data in a dictionary from the csv
 def create_metadata(job, project_id, v=1):
+
     # pad asset number
     asset_number = pad_asset(job[0], v)
     # parse date field
-    if job[3] == "":
-        if v >= 2:
-            print ("No date entry. Putting in 1111_11_11")  # this is the entry meaning we don't know the date
-        textdate = "1111 NOV 11"
-    else:
-        textdate = job[3]
+    textdate = job[3]
     dictdate = parse_date(textdate)
 
     # build filename
-    file_name = project_id + "_" + asset_number + "_" + dictdate['year'] + "_" + dictdate['month'] \
-        + "_" + dictdate['day'] + "_" + format_string(job[1]) + "_" + format_string(job[2])
+    file_name = project_id + "_" + asset_number
+    if dictdate['year'] != "":
+        file_name = file_name + "_" + dictdate['year']
+    if dictdate['month'] != "":
+        file_name = file_name + "_" + dictdate['month']
+    if dictdate['day'] != "":
+        file_name = file_name + "_" + dictdate['day']
+    field = format_string(job[1])
+    if field != "":
+        file_name = file_name + "_" + field
+    field = format_string(job[2])
+    if field != "":
+        file_name = file_name + "_" + field
 
     # create our dictionary
     metadata = {'file_name': file_name, 'date': dictdate, 'source': job[1], 'source_id': job[2], 'description': job[4],
@@ -361,8 +370,6 @@ def excel(jobs, download_location, v=1):
 # return the location to make the screeners
 def check_screeners(args, v=1):
 
-    locations = None  # in case locations gets returned without being set to a path
-
     if args.google_screener:
         if args.screener_location is not None:
             if args.screener_location != "":  # custom location overrides default
@@ -404,6 +411,7 @@ def check_screeners(args, v=1):
                         print ("Custom Screener location is not a valid directory")
                     return None
 
+
 def google_drive_screener(job, path, v=1):
 
     # Grab the Project ID from file name
@@ -415,7 +423,7 @@ def google_drive_screener(job, path, v=1):
 
     if screener_path == volume_result.not_found:
         # we couldn't find the screener location in the Google Drive
-        if verbosity >= 1:
+        if v >= 1:
             print ("Could not find story folder in google drive for: " + job['file_name'])
             print ("No screener will be Made")
         job['screener'] = False
@@ -464,9 +472,9 @@ def post_download(args, job, rough_screener_path, v=1):
                 screener_path = rough_screener_path + job['file_name']
             else:                           # We do need to add a trailing slash
                 screener_path = rough_screener_path + "/" + job['file_name']
-                print "coooasdgasgsadga"
-            # create the screener file
-            print screener_path
+                if v >= 1:
+                    print ("Creating Screener at path:")            # create the screener file
+                    print (screener_path)
             retrosupport.media.create_screener(job['location'], screener_path, v)
             # Check and see if screener was really created
             if os.path.isfile(screener_path + ".mp4"):
@@ -477,7 +485,9 @@ def post_download(args, job, rough_screener_path, v=1):
 
     return job
 
+
 def main():
+
     print ("")  # a nice blank space after the user puts in all the input
     # get arguments set up
     unpack = set_argparse()  # returns list of parsed arguments and the parser itself
@@ -501,11 +511,11 @@ def main():
     # check the project ID
     if args.project_id is None:
         project_id = csv_dump[0][0]  # extract the project ID number
-        if verbosity >= 3:
+        if verbosity >= 2:
             print ("Using google sheet provided project id: " + project_id)
     else:
         project_id = args.project_id
-        if verbosity >= 3:
+        if verbosity >= 2:
             print ("Using user provided provided project id: " + project_id)
 
     if project_id == "unknown":
@@ -520,13 +530,14 @@ def main():
             csv_first_pass.append(item)
         after_first_item = True  # need to mark we passed the first item
 
-    print (str(len(csv_first_pass)) + " jobs to process")
+    if verbosity >= 1:
+        print (str(len(csv_first_pass)) + " jobs to process")
 
     jobs = []  # create job list
     processed_jobs = []   # create list to hold processed jobs
     links = 0  # hold the number of jobs with links
 
-    # Variable to determine if me make screeners or not
+    # Variable to determine if me make screener or not
     # Value is none if not. Path for screener location if yes
     screeners = check_screeners(args, verbosity)
 
@@ -555,8 +566,8 @@ def main():
     for job in jobs:
         if job['link'] != "":  # check to see if a link exists
             download = download_video(job, location, verbosity)  # download the video store result
-            if verbosity >= 2:
-                print ("\ndownload result:")
+            if verbosity >= 3:
+                print ("\ndownload result from download_video function:")
                 print (download)
 
             if download == 0:  # download failed
@@ -565,7 +576,8 @@ def main():
             else:  # Double Check make sure file is there
                 if os.path.isfile(download):    # Success! store the results
                     job['downloaded'] = True
-                    job['location'] = download
+                    job['location'] = download  # download is the path to the file returned from download_video
+                    job['file_name'] = job['location'][]
                     job = post_download(args, job, screeners, verbosity)
                     processed_jobs.append(job)
                 else:
@@ -577,8 +589,25 @@ def main():
             print ("\nSkipping " + job['file_name'] + "has no link")
 
     excel(processed_jobs, location, verbosity)
+
+    # Split the list in two. One for downloaded assets and one for all others
+    downloaded_jobs = []    # holds the assets that we have ready
+    future_import_jobs = [] # holds the assets for a seperate xml file that will be used for batch import in the future
     for job in processed_jobs:
-        print job
+        if job['downloaded']:   # downloaded holds a boolean
+            downloaded_jobs.append(job)
+        else:
+            future_import_jobs.append(job)
+
+    print ("\nDownloaded jobs")
+    for job in downloaded_jobs:
+        print(job['formated_asset_number'])
+        print(job['file_name'])
+        print(job['location'])
+
+    print ("\nJobs for future import")
+    for job in future_import_jobs:
+        print(job['formated_asset_number'])
 
 if __name__ == "__main__":
     main()

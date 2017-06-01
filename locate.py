@@ -40,12 +40,12 @@ def find_story_volume(asset, verbosity = 1):
 
     elif len(volumes) > 1:  # found multiple potential volumes. sort through them
         for volume in volumes:
-            if rr_number in volume: # check and see if the rr# matches
+            if rr_number in volume:  # check and see if the rr# matches
                 if is_story(volume, rr_number): # check and see if its a story volume
                     print volume
                     return volume  # we found it. This logic matches the first pattern. But should be the only one
 
-        # now just check for partial matches, incase its a .02 number and we are going to original volumls e
+        # now just check for partial matches, in case its a .02 number and we are going to original volumls e
         for volume in volumes:
             if is_story(volume, rr_number): # check and see if its a story volume
                 if verbosity >= 1:
@@ -101,12 +101,11 @@ def is_story(path, rr_number="na"):
             if directory in rr_number_reference:
                 shared_elements = shared_elements + 1   # incriment the number of shared elements
 
-
-
     if shared_elements > 6: # 6 is the threashhold. If only 6 matches its not a story drive. More than 6 it is
         return True
 
     return False
+
 
 def find_google_drive_archival(google_drive_path, story_folder_path, rr_number, verbosity = 1):
 
@@ -119,9 +118,6 @@ def find_google_drive_archival(google_drive_path, story_folder_path, rr_number, 
             return path
     else:   # we found the path on the first try
         return path
-
-    # just for safety
-    return volume_result.not_found
 
 
 def google_drive_archival_search(target_volume, rr_number):
@@ -143,8 +139,7 @@ def google_drive_archival_search(target_volume, rr_number):
                     "_ARCHIVAL/" + rr_number.upper() + "_SCREENERS_ARCHIVAL/"
             return path
 
-    return path # this should never need to be executed but..
-
+    return path  # this should never need to be executed but..
 
 
 def find_archival_location(target_volume, rr_number="na"):
@@ -169,9 +164,10 @@ def find_archival_location(target_volume, rr_number="na"):
     # this method will get the first match and ignore all others
     prefix_2 = rr_number.lower() + "_archival"
     prefix = rr_number.lower() + "_archival_footage"
-    target = "notfound" # the check. Once this changes no more compares are made and it stores the directory we are looking for
+    target = "notfound"  # the check. Once this changes no more compares are made and it stores /
+                            # the directory we are looking for
 
-    # Go Through all the directores and look for our strings
+    # Go Through all the directories and look for our strings
     # this will stop at the first hit. however there should
     # only be one "archival" directory in a retro volume
     # this should not produce any undesired results
@@ -218,35 +214,28 @@ def google_drive(verbosity):
             return list   # we found both paths so return them
         else:
             if verbosity >= 2:
-                print "Google Drive is mounted however I cannot find the story path"
-                print "Thats fucked up"
+                print ("Google Drive is mounted however I cannot find the story path")
+                print ("Thats not right")
             list.append(volume_result.not_found) # we did not find the story folder path, make as failed
             return list
     else:
         if verbosity >=2:
-                print "Google Drive does not appear to be mounted"
-                print "perhaps you should mount it."
+                print ("Google Drive does not appear to be mounted")
+                print ("perhaps you should mount it.")
         list.append(volume_result.not_found)
-        return list             # "we ain't find shit"
+        return list             # "we ain't find it"
 
-    # Just to cover ourselves
-    if verbosity >=3:
-        print "Something strange happend with google_drive() function."
-        print "Also no Google Drive was found"
-
-    list.append(volume_result.not_found)
-    return list
 
 def find_asset(asset, location):
 
     # list all the items in the location
     dir_list = os.listdir(location)
-    file_list = [] # where we will hold just the files
+    file_list = []  # where we will hold just the files
     file_found_list = []    # where we will hold all the files that have the name we are looking for
 
     # process the list
     for item in dir_list:
-        path = location + item # built the full path toward the item
+        path = location + item  # built the full path toward the item
 
         # if its a file add it to our list. Leave dirs behind
         if os.path.isfile(path):
@@ -260,7 +249,7 @@ def find_asset(asset, location):
     return file_found_list
 
 def main():
-    print "Can't be run as main()"
+    print ("Can't be run as main()")
 
 if __name__ == "__main__":
     main();
