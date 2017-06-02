@@ -13,6 +13,7 @@ from retrosupport import process
 from retrosupport import media
 from retrosupport.process import volume_result
 from retrosupport.retro_dl import retro_youtube_dl
+from retrosupport.emamsidecar import Asset, FileAction, IngestAction, CustomMetadata, Marker, generate_sidecar_xml, Subclip
 
 
 def set_argparse():
@@ -237,7 +238,8 @@ def create_metadata(job, project_id, v=1):
     metadata = {'file_name': file_name, 'date': dictdate, 'source': job[1], 'source_id': job[2], 'description': job[4],
                 'link': job[5], 'in': job[6], 'out': job[7], 'notes': job[8], 'copy_holder': job[9], 'location': "",
                 'license_status': job[10], 'copyright_status': job[11], 'project_id': project_id,
-                'asset_number': job[0], 'formated_asset_number': asset_number, 'downloaded': False, 'screener': False}
+                'asset_number': job[0], 'formated_asset_number': asset_number, 'downloaded': False, 'screener': False,
+                'file_name_ext': ""}
 
     return metadata
 
@@ -577,7 +579,9 @@ def main():
                 if os.path.isfile(download):    # Success! store the results
                     job['downloaded'] = True
                     job['location'] = download  # download is the path to the file returned from download_video
-                    job['file_name'] = job['location'][]
+                    # get the real file name with the extension and save it
+                    head, tail = os.path.split(download)
+                    job['file_name_ext'] = tail
                     job = post_download(args, job, screeners, verbosity)
                     processed_jobs.append(job)
                 else:
@@ -592,22 +596,66 @@ def main():
 
     # Split the list in two. One for downloaded assets and one for all others
     downloaded_jobs = []    # holds the assets that we have ready
-    future_import_jobs = [] # holds the assets for a seperate xml file that will be used for batch import in the future
+    future_import_jobs = []  # holds the assets for a separate xml file that will be used for batch import in the future
     for job in processed_jobs:
         if job['downloaded']:   # downloaded holds a boolean
             downloaded_jobs.append(job)
         else:
             future_import_jobs.append(job)
 
-    print ("\nDownloaded jobs")
+    # Get the xml ready for files that we have now
+    list_assets = []
     for job in downloaded_jobs:
-        print(job['formated_asset_number'])
-        print(job['file_name'])
-        print(job['location'])
+        # Asset information
+        asset = Asset()
+        asset.title = job['file_name']
+        asset.description = job['description']
+        asset.file_name = job['file_name_ext']
+        asset.file_path = '\\\\10.0.8.5\\d\\videos'
+        asset.file_action = FileAction.MOVE
+        asset.ingest_action = IngestAction.CREATE_NEW_ASSET
+
+        # Define custom metadata fields.
+        custom_metadata = []
+        # Mandatory fields
+        metadata = CustomMetadata()
+        metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'
+        metadata.value = job['file_name']
+        custom_metadata.append(metadata)
+        metadata = CustomMetadata()
+        metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
+        metadata.value = job['asset_number']
+        custom_metadata.append(metadata)
+        asset.custom_metadata = custom_metadata
+        metadata.standard_id = 'CUST_FLD_SOURCE_17'
+        metadata.value = job['source']
+        custom_metadata.append(metadata)
+        # Non mandatory fields
+        if job['source_id'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
+            metadata.value = job['source_id']
+            custom_metadata.append(metadata)
+        if job['description'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
+            metadata.value = job['description']
+            custom_metadata.append(metadata)
+        if job['link'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_LINK_20'
+            metadata.value = job['link']
+            custom_metadata.append(metadata)
+        if job['notes'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_NOTES_32'
+            metadata.value = job['notes']
+            custom_metadata.append(metadata)
+
 
     print ("\nJobs for future import")
     for job in future_import_jobs:
-        print(job['formated_asset_number'])
+        job['file_name'] = job['file_name'] + ".mov"    # need to add a generic file extension
 
 if __name__ == "__main__":
     main()
