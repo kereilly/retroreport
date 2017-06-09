@@ -488,6 +488,65 @@ def post_download(args, job, rough_screener_path, v=1):
     return job
 
 
+def emam_metadata_format(jobs):
+
+    list_assets = []
+    for job in jobs:
+        # Asset information
+        asset = Asset()
+        asset.title = job['file_name']
+        asset.description = job['description']
+        asset.file_name = job['file_name_ext']
+        asset.file_path = '\\\\10.0.8.5\\d\\videos'
+        asset.file_action = FileAction.MOVE
+        asset.ingest_action = IngestAction.CREATE_NEW_ASSET
+
+        # Define custom metadata fields.
+        custom_metadata = []
+        # Mandatory fields
+        metadata = CustomMetadata()
+        metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'
+        metadata.value = job['file_name']
+        custom_metadata.append(metadata)
+        metadata = CustomMetadata()
+        metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
+        metadata.value = job['asset_number']
+        custom_metadata.append(metadata)
+        asset.custom_metadata = custom_metadata
+        metadata.standard_id = 'CUST_FLD_SOURCE_17'
+        metadata.value = job['source']
+        custom_metadata.append(metadata)
+        # Non mandatory fields
+        if job['source_id'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
+            metadata.value = job['source_id']
+            custom_metadata.append(metadata)
+        if job['description'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
+            metadata.value = job['description']
+            custom_metadata.append(metadata)
+        if job['link'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_LINK_20'
+            metadata.value = job['link']
+            custom_metadata.append(metadata)
+        if job['notes'] != "":
+            asset.custom_metadata = custom_metadata
+            metadata.standard_id = 'CUST_FLD_NOTES_32'
+            metadata.value = job['notes']
+            custom_metadata.append(metadata)
+
+        # load meta data into asset
+        asset.custom_metadata = custom_metadata
+
+        # load asset into list
+        list_assets.append(asset)
+
+    return list_assets
+
+
 def main():
 
     print ("")  # a nice blank space after the user puts in all the input
@@ -604,54 +663,10 @@ def main():
             future_import_jobs.append(job)
 
     # Get the xml ready for files that we have now
-    list_assets = []
-    for job in downloaded_jobs:
-        # Asset information
-        asset = Asset()
-        asset.title = job['file_name']
-        asset.description = job['description']
-        asset.file_name = job['file_name_ext']
-        asset.file_path = '\\\\10.0.8.5\\d\\videos'
-        asset.file_action = FileAction.MOVE
-        asset.ingest_action = IngestAction.CREATE_NEW_ASSET
+    downloaded_job_xml_list = emam_metadata_format(downloaded_jobs)
 
-        # Define custom metadata fields.
-        custom_metadata = []
-        # Mandatory fields
-        metadata = CustomMetadata()
-        metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'
-        metadata.value = job['file_name']
-        custom_metadata.append(metadata)
-        metadata = CustomMetadata()
-        metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
-        metadata.value = job['asset_number']
-        custom_metadata.append(metadata)
-        asset.custom_metadata = custom_metadata
-        metadata.standard_id = 'CUST_FLD_SOURCE_17'
-        metadata.value = job['source']
-        custom_metadata.append(metadata)
-        # Non mandatory fields
-        if job['source_id'] != "":
-            asset.custom_metadata = custom_metadata
-            metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
-            metadata.value = job['source_id']
-            custom_metadata.append(metadata)
-        if job['description'] != "":
-            asset.custom_metadata = custom_metadata
-            metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
-            metadata.value = job['description']
-            custom_metadata.append(metadata)
-        if job['link'] != "":
-            asset.custom_metadata = custom_metadata
-            metadata.standard_id = 'CUST_FLD_LINK_20'
-            metadata.value = job['link']
-            custom_metadata.append(metadata)
-        if job['notes'] != "":
-            asset.custom_metadata = custom_metadata
-            metadata.standard_id = 'CUST_FLD_NOTES_32'
-            metadata.value = job['notes']
-            custom_metadata.append(metadata)
-
+    # Create our xml file
+    generate_sidecar_xml('5k4gfs78hdf', downloaded_job_xml_list, '/Users/edit6/Desktop/test2.xml')
 
     print ("\nJobs for future import")
     for job in future_import_jobs:
