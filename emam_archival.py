@@ -9,6 +9,7 @@ import argparse
 import os.path
 import xlsxwriter
 import retrosupport
+import time
 from retrosupport import process
 from retrosupport import media
 from retrosupport.process import volume_result
@@ -600,7 +601,7 @@ def main():
         if verbosity >= 2:
             print ("Using user provided provided project id: " + project_id)
 
-    if project_id == "unknown":
+    if project_id == "$$ProjectID":
         print ("The Google Sheet JavaScript did not provide a project ID")
         print ("Specify your own project ID with the -r flag. Downloader will not continue")
         exit()
@@ -691,6 +692,7 @@ def main():
     # Split the list in two. One for downloaded assets and one for all others
     downloaded_jobs = []    # holds the assets that we have ready
     future_import_jobs = []  # holds the assets for a separate xml file that will be used for batch import in the future
+
     for job in processed_jobs:
         if job['downloaded']:   # downloaded holds a boolean
             downloaded_jobs.append(job)  # this job was downloaded
@@ -703,18 +705,34 @@ def main():
             else:
                 future_import_jobs.append(job)
 
-    # Get the xml ready for files that we have now
-    downloaded_job_xml_list = emam_metadata_format(downloaded_jobs, category)
+    # Check and see if we have any downloaded jobs
+    if len(downloaded_jobs) > 0:
 
-    # Create our xml file
-    location = location + "sidecar.xml"
-    print location
-    generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', downloaded_job_xml_list,
-                         location)
+        # Get the xml ready for files that we have now
+        downloaded_job_xml_list = emam_metadata_format(downloaded_jobs, category)
 
-    print ("\nJobs for future import")
-    for job in future_import_jobs:
-        job['file_name'] = job['file_name'] + ".mov"    # need to add a generic file extension
+        # Create our xml file
+        tstamp = time.strftime("%Y_%m_%d_T_%H_%M")      # hold hte current date and time
+        location = location + "sidecar_" + tstamp + ".xml"
+
+        generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', downloaded_job_xml_list,
+                             location)
+
+    # Get xml ready for files we will have in the future
+    if len(future_import_jobs) > 0:     # make sure we have items in the list
+        # need to add a generic file extension since files weren't downloaded
+        for job in future_import_jobs:
+            job['file_name'] = job['file_name'] + ".mov"   # Mov's are most likely extension
+
+        future_job_xml_list = emam_metadata_format(future_import_jobs, category)  # format our metadata
+
+        # get the location to save to, coming from input file
+        index = csv_path.rfind("/") + 1
+        tstamp = time.strftime("%Y_%m_%d_T_%H_%M")    # create our time stamp
+        location = csv_path[:index] + "future_sidecar_" + tstamp + ".xml"
+        generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
+                             future_job_xml_list,
+                             location)
 
 if __name__ == "__main__":
     main()
