@@ -1,8 +1,9 @@
 # just some functions many retro scripts will use
 
-import sys
 import os.path
 import parsedatetime.parsedatetime as pdt
+from retrosupport.emamsidecar import Asset, FileAction, IngestAction, CustomMetadata, \
+    Marker, generate_sidecar_xml, Subclip
 
 
 # Classes that need to work accross modules
@@ -88,39 +89,93 @@ def parse_asset_label(asset_label):
         # In a correct RR number the 6th character (#5 in computer speak, starting with 0) should be a '_' or '.'
         # If its not something is fucked up. Lets let the user know and exit the program
 
-        print "So I can't find the asset number and RR number in the label"
-        print "I cannot continue under these conditions"
-        print "Your the kind of person that misses his/her first day of work!"
+        print ("So I can't find the asset number and RR number in the label")
+        print ("I cannot continue under these conditions")
+        print ("Your the kind of person that misses his/her first day of work!")
         exit()
 
-## takes a string returns a python date
-def datetimeFromString(s):
 
-    c = pdt.Calendar()
-    result, what = c.parse(s)
+def emam_metadata_format(jobs, category):
 
-    dt = None
+    list_assets = []
+    for job in jobs:
+        # Asset information
+        asset = Asset()
+        asset.title = job['file_name']
+        asset.description = job['description']
+        asset.file_name = job['file_name_ext']
+        asset.file_path = "\\\\10.0.2.8\\xml_ingest"
+        asset.file_action = FileAction.MOVE
+        asset.ingest_action = IngestAction.CREATE_NEW_ASSET
 
-    # what was returned (see http://code-bear.com/code/parsedatetime/docs/)
-    # 0 = failed to parse
-    # 1 = date (with current time, as a struct_time)
-    # 2 = time (with current date, as a struct_time)
-    # 3 = datetime
-    if what in (1,2):
-        # result is struct_time
-        dt = datetime.datetime(*result[:6])
-    elif what == 3:
-        # result is a datetime
-        dt = result
+        # Define custom metadata fields.
+        custom_metadata = []
+        # Mandatory fields
+        metadata = CustomMetadata()  # Set metadata as CustomMetadata object
+        metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'    # Add the id for metadata field
+        metadata.value = job['file_name']       # Add the value of the feild
+        custom_metadata.append(metadata)    # append metadata to the list
+        metadata = CustomMetadata()     # reset custom metadata object
+        metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
+        metadata.value = job['asset_number']
+        custom_metadata.append(metadata)
+        metadata = CustomMetadata()
+        metadata.standard_id = 'CUST_FLD_SOURCE_17'
+        metadata.value = job['source']
+        custom_metadata.append(metadata)
+        metadata = CustomMetadata()
+        metadata.standard_id = 'CUST_FLD_PROJECT ID_29'
+        metadata.value = job['project_id']
+        custom_metadata.append(metadata)
 
-    if dt is None:
-        # Failed to parse
-        raise ValueError, ("Don't understand date '"+s+"'")
+        # Non mandatory fields
+        if job['source_id'] != "":
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
+            metadata.value = job['source_id']
+            custom_metadata.append(metadata)
+        if job['description'] != "":
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
+            metadata.value = job['description']
+            custom_metadata.append(metadata)
+        if job['link'] != "":
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_LINK_20'
+            metadata.value = job['link']
+            custom_metadata.append(metadata)
+        if job['notes'] != "":
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_NOTES_32'
+            metadata.value = job['notes']
+            custom_metadata.append(metadata)
+        #  Extract date
+        dict_date = job['date']
+        if dict_date['year'] != "":  # use the year as the condition if a date is present
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_DATE_5'
+            date = dict_date['year']
+            if dict_date['month'] != "":    # test if month is present
+                date = date + "/" + dict_date['month']
+            if dict_date['day'] != "":
+                date = date + "/" + dict_date['month']
+            metadata.value = date
+            custom_metadata.append(metadata)
 
-    return dt
+        # load meta data into asset
+        asset.custom_metadata = custom_metadata
+
+        # Add category
+        asset.categories = category
+
+        # load asset into list
+        list_assets.append(asset)
+
+    return list_assets
+
 
 def main():
-    print "Can't be run as main()"
+    print ("Can't be run as main()")
 
 if __name__ == "__main__":
     main();

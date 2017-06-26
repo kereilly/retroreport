@@ -13,9 +13,9 @@ import time
 from retrosupport import process
 from retrosupport import media
 from retrosupport.process import volume_result
+from retrosupport.process import  emam_metadata_format
 from retrosupport.retro_dl import retro_youtube_dl
-from retrosupport.emamsidecar import Asset, FileAction, IngestAction, CustomMetadata, Marker, generate_sidecar_xml, Subclip
-
+from retrosupport.emamsidecar import generate_sidecar_xml
 
 def set_argparse():
     # Start things off using pythons argparse. get user input and give help information
@@ -489,89 +489,9 @@ def post_download(args, job, rough_screener_path, v=1):
     return job
 
 
-def emam_metadata_format(jobs, category):
-
-    list_assets = []
-    for job in jobs:
-        # Asset information
-        asset = Asset()
-        asset.title = job['file_name']
-        asset.description = job['description']
-        asset.file_name = job['file_name_ext']
-        asset.file_path = "\\\\10.0.2.8\\xml_ingest"
-        asset.file_action = FileAction.MOVE
-        asset.ingest_action = IngestAction.CREATE_NEW_ASSET
-
-        # Define custom metadata fields.
-        custom_metadata = []
-        # Mandatory fields
-        metadata = CustomMetadata()  # Set metadata as CustomMetadata object
-        metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'    # Add the id for metadata field
-        metadata.value = job['file_name']       # Add the value of the feild
-        custom_metadata.append(metadata)    # append metadata to the list
-        metadata = CustomMetadata()     # reset custom metadata object
-        metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
-        metadata.value = job['asset_number']
-        custom_metadata.append(metadata)
-        metadata = CustomMetadata()
-        metadata.standard_id = 'CUST_FLD_SOURCE_17'
-        metadata.value = job['source']
-        custom_metadata.append(metadata)
-        metadata = CustomMetadata()
-        metadata.standard_id = 'CUST_FLD_PROJECT ID_29'
-        metadata.value = job['project_id']
-        custom_metadata.append(metadata)
-
-        # Non mandatory fields
-        if job['source_id'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
-            metadata.value = job['source_id']
-            custom_metadata.append(metadata)
-        if job['description'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
-            metadata.value = job['description']
-            custom_metadata.append(metadata)
-        if job['link'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_LINK_20'
-            metadata.value = job['link']
-            custom_metadata.append(metadata)
-        if job['notes'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_NOTES_32'
-            metadata.value = job['notes']
-            custom_metadata.append(metadata)
-        #  Extract date
-        dict_date = job['date']
-        if dict_date['year'] != "":  # use the year as the condition if a date is present
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_DATE_5'
-            date = dict_date['year']
-            if dict_date['month'] != "":    # test if month is present
-                date = date + "/" + dict_date['month']
-            if dict_date['day'] != "":
-                date = date + "/" + dict_date['month']
-            print date
-            metadata.value = date
-            custom_metadata.append(metadata)
-
-        # load meta data into asset
-        asset.custom_metadata = custom_metadata
-
-        # Add category
-        asset.categories = category
-
-        # load asset into list
-        list_assets.append(asset)
-
-    return list_assets
-
-
 def main():
 
-    print ("")  # a nice blank space after the user puts in all the input
+    print("")  # a nice blank space after the user puts in all the input
     # get arguments set up
     unpack = set_argparse()  # returns list of parsed arguments and the parser itself
 
@@ -715,8 +635,8 @@ def main():
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")      # hold hte current date and time
         location = location + "sidecar_" + tstamp + ".xml"
 
-        generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', downloaded_job_xml_list,
-                             location)
+        generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
+                             downloaded_job_xml_list, location)
 
     # Get xml ready for files we will have in the future
     if len(future_import_jobs) > 0:     # make sure we have items in the list
