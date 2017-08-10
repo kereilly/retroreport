@@ -50,6 +50,25 @@ class frame_rates(object):
     f60 = 60
 
 
+class SideCarType(object):
+    vandy = 3
+    tracker = 4
+
+
+class XmlDrive(object):
+    ingest1 = 3
+    ingest2 = 4
+    ingest3 = 5
+    ingets4 = 6
+    path1 = "/Volumes/xml_ingest1"
+    path2 = "/Volumes/xml_ingest2"
+    path3 = "/Volumes/xml_ingest3"
+    path4 = "/Volumes/xml_ingest4"
+    raid1 = "/Volumes/RAID1_1"
+    raid2 = "/Volumes/RAID2_1"
+    raid3 = "/Volumes/RAID3_1"
+    raid4 = "/Volumes/RAID4_1"
+
 class to_trim(object):
     false = 0
     true = 1
@@ -95,60 +114,64 @@ def parse_asset_label(asset_label):
         exit()
 
 
-def emam_metadata_format(jobs, category):
+def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
 
     list_assets = []
+    path = "\\\\10.0.2.8\\" + path
     for job in jobs:
         # Asset information
         asset = Asset()
         asset.title = job['file_name']
         asset.description = job['description']
         asset.file_name = job['file_name_ext']
-        asset.file_path = "\\\\10.0.2.8\\xml_ingest"
+        asset.file_path = path
         asset.file_action = FileAction.MOVE
         asset.ingest_action = IngestAction.CREATE_NEW_ASSET
 
         # Define custom metadata fields.
         custom_metadata = []
-        # Mandatory fields
-        metadata = CustomMetadata()  # Set metadata as CustomMetadata object
-        metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'    # Add the id for metadata field
-        metadata.value = job['file_name']       # Add the value of the feild
-        custom_metadata.append(metadata)    # append metadata to the list
-        metadata = CustomMetadata()     # reset custom metadata object
-        metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
-        metadata.value = job['asset_number']
-        custom_metadata.append(metadata)
-        metadata = CustomMetadata()
-        metadata.standard_id = 'CUST_FLD_SOURCE_17'
-        metadata.value = job['source']
-        custom_metadata.append(metadata)
-        metadata = CustomMetadata()
-        metadata.standard_id = 'CUST_FLD_PROJECT ID_29'
-        metadata.value = job['project_id']
-        custom_metadata.append(metadata)
+        if asset_type == SideCarType.tracker:
+            # Mandatory fields
+            metadata = CustomMetadata()  # Set metadata as CustomMetadata object
+            metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'    # Add the id for metadata field
+            metadata.value = job['file_name']       # Add the value of the feild
+            custom_metadata.append(metadata)    # append metadata to the list
+            metadata = CustomMetadata()     # reset custom metadata object
+            metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
+            metadata.value = job['asset_number']
+            custom_metadata.append(metadata)
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_SOURCE_17'
+            metadata.value = job['source']
+            custom_metadata.append(metadata)
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_PROJECT ID_29'
+            metadata.value = job['project_id']
+            custom_metadata.append(metadata)
 
-        # Non mandatory fields
-        if job['source_id'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
-            metadata.value = job['source_id']
-            custom_metadata.append(metadata)
-        if job['description'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
-            metadata.value = job['description']
-            custom_metadata.append(metadata)
-        if job['link'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_LINK_20'
-            metadata.value = job['link']
-            custom_metadata.append(metadata)
-        if job['notes'] != "":
-            metadata = CustomMetadata()
-            metadata.standard_id = 'CUST_FLD_NOTES_32'
-            metadata.value = job['notes']
-            custom_metadata.append(metadata)
+            # Non mandatory fields
+            if job['source_id'] != "":
+                metadata = CustomMetadata()
+                metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
+                metadata.value = job['source_id']
+                custom_metadata.append(metadata)
+            if job['description'] != "":
+                metadata = CustomMetadata()
+                metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
+                metadata.value = job['description']
+                custom_metadata.append(metadata)
+            if job['link'] != "":
+                metadata = CustomMetadata()
+                metadata.standard_id = 'CUST_FLD_LINK_20'
+                metadata.value = job['link']
+                custom_metadata.append(metadata)
+            if job['notes'] != "":
+                metadata = CustomMetadata()
+                metadata.standard_id = 'CUST_FLD_NOTES_32'
+                metadata.value = job['notes']
+                custom_metadata.append(metadata)
+        if asset_type == SideCarType.vandy:
+            print ("Do nothing right now")
         #  Extract date
         dict_date = job['date']
         if dict_date['year'] != "":  # use the year as the condition if a date is present
@@ -172,6 +195,37 @@ def emam_metadata_format(jobs, category):
         list_assets.append(asset)
 
     return list_assets
+
+def sidecar_destination (choice=0):
+
+    if choice == XmlDrive.ingest1:
+        if os.path.ismount(XmlDrive.path1):
+            return XmlDrive.path1
+    elif choice == XmlDrive.ingest2:
+        if os.path.ismount(XmlDrive.patht2):
+            return XmlDrive.path2
+    elif choice == XmlDrive.ingest3:
+        if os.path.ismount(XmlDrive.path3):
+            return XmlDrive.path3
+    elif choice == XmlDrive.ingest4:
+        if os.path.ismount(XmlDrive.path4):
+            return XmlDrive.path4
+    else:
+        xmls = []   # to hold list of xml mount booleans
+        raids= []   # to hold list of raid mount booleans
+        if os.path.ismount(XmlDrive.path1):
+            xmls.append(True)
+            if os.path.ismount(XmlDrive.raid1):
+                raids.append(True)
+            else
+                raids.append(False)
+        else:
+            # if xml mount fails to appear set both to false to we keep raid and xml list synced
+            xmls.append(False)
+            raids.append(False)
+
+
+
 
 
 def main():

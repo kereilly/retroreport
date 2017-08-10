@@ -14,6 +14,7 @@ from retrosupport import process
 from retrosupport import media
 from retrosupport.process import volume_result
 from retrosupport.process import  emam_metadata_format
+from retrosupport.process import SideCarType
 from retrosupport.retro_dl import retro_youtube_dl
 from retrosupport.emamsidecar import generate_sidecar_xml
 
@@ -41,6 +42,8 @@ def set_argparse():
                                                                       "not premiere compatible")
 
     parser.add_argument("-g", "--google_screener", action="store_true", help="Create mp4's for the google drive")
+
+    parser.add_argument("-o", "--xml_ingest", type=int, choices=[1, 2, 3, 4], help="Raid location usage")
 
     parser.add_argument("-x", "--screener_location", type=str, help="Overide where the screeners are made")
 
@@ -258,9 +261,12 @@ def download_video(job, download_location, verbosity=1, ):
 
 
 # Create an excel spreadsheet
-def excel(jobs, download_location, v=1):
+def excel(jobs, csv_path, v=1):
 
-    file_location = download_location + 'Results.xlsx'
+    index = csv_path.rfind("/") + 1
+    tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # create our time stamp
+    file_location = csv_path[:index] + "Results_" + tstamp + ".xlsx"
+
     if v >= 3:
         print ('Creating excel sheet at: ' + file_location)
 
@@ -489,6 +495,14 @@ def post_download(args, job, rough_screener_path, v=1):
     return job
 
 
+def find_xml(args):
+
+    if args.xml_ingest == 2:
+        return "xml_ingest2"
+    else:
+        return "xml_ingest3"
+
+
 def main():
 
     print("")  # a nice blank space after the user puts in all the input
@@ -501,6 +515,8 @@ def main():
     check_args(args)
     verbosity = args.verbosity
     csv_path = args.input
+
+    xml_path = find_xml(args)
 
     # Multithreading not supported yet. Warn user if enabled
     if args.multi_thread:
@@ -607,7 +623,7 @@ def main():
             processed_jobs.append(job)
             print ("\nSkipping " + job['file_name'] + "has no link")
 
-    excel(processed_jobs, location, verbosity)
+    excel(processed_jobs, csv_path, verbosity)
 
     # Split the list in two. One for downloaded assets and one for all others
     downloaded_jobs = []    # holds the assets that we have ready
@@ -629,7 +645,7 @@ def main():
     if len(downloaded_jobs) > 0:
 
         # Get the xml ready for files that we have now
-        downloaded_job_xml_list = emam_metadata_format(downloaded_jobs, category)
+        downloaded_job_xml_list = emam_metadata_format(downloaded_jobs, category, SideCarType.tracker, xml_path)
 
         # Create our xml file
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")      # hold hte current date and time
@@ -642,9 +658,10 @@ def main():
     if len(future_import_jobs) > 0:     # make sure we have items in the list
         # need to add a generic file extension since files weren't downloaded
         for job in future_import_jobs:
-            job['file_name'] = job['file_name'] + ".mov"   # Mov's are most likely extension
+            job['file_name_ext'] = job['file_name'] + ".mov"   # Mov's are most likely extension
 
-        future_job_xml_list = emam_metadata_format(future_import_jobs, category)  # format our metadata
+        # format our metadata
+        future_job_xml_list = emam_metadata_format(future_import_jobs, category, SideCarType.tracker, xml_path)
 
         # get the location to save to, coming from input file
         index = csv_path.rfind("/") + 1
