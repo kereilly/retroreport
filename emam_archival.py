@@ -92,11 +92,11 @@ def check_args(args):
     # check and make sure output directory is good
     if args.output_directory is None:
         print ("You didn't specify a directory to save to")
-        print ("Please specifiy a valid directory to save to with the -d swtich")
+        print ("Please specify a valid directory to save to with the -d switch")
         exit()  # Cuz we have nowhere to put anything
     elif not os.path.isdir(args.output_directory):
         print ("The directory you specified to save to does not exist: "
-               + args.output_directory + " please specifiy a valid directory to save to")
+               + args.output_directory + " please specify a valid directory to save to")
         exit()  # Cuz we have nowhere to put anything
 
 
@@ -213,15 +213,30 @@ def pad_asset(asset, v=1):
 
     return return_asset
 
+def subtime(time, v=1):
+
+    # no hour placement, pad with 0's
+    if time[0] == ":":
+        time = "00" + time
+
+    time = time + ":00"  # add frames
+    return time
+
+
+def year_categories(years, v=1):
+
+    return years
+
 
 # Put the meta data in a dictionary from the csv
-def create_metadata(job, project_id, v=1):
+def create_metadata(job, project_id, keywords, v=1):
 
     # pad asset number
     asset_number = pad_asset(job[0], v)
     # parse date field
-    textdate = job[3]
+    textdate = job[5]
     dictdate = parse_date(textdate)
+    # find our year categories
 
     # build filename
     file_name = project_id + "_" + asset_number
@@ -238,12 +253,19 @@ def create_metadata(job, project_id, v=1):
     if field != "":
         file_name = file_name + "_" + field
 
+    # A place to hold the dictionary titles in case of google sheet column re-arrangement. Date column is always skipped
+    # asset_number source copy_holder copyright_status source_id decade description details link master_status
+    # alerts first_in first_out first_label second_in second_out second_label status_license
     # create our dictionary
-    metadata = {'file_name': file_name, 'date': dictdate, 'source': job[1], 'source_id': job[2], 'description': job[4],
-                'link': job[5], 'in': job[6], 'out': job[7], 'notes': job[8], 'copy_holder': job[9], 'location': "",
-                'license_status': job[10], 'copyright_status': job[11], 'project_id': project_id,
-                'asset_number': job[0], 'formated_asset_number': asset_number, 'downloaded': False, 'screener': False,
-                'file_name_ext': ""}
+    metadata = {'asset_number': job[0], 'source': job[1], 'copy_holder': job[2], 'copyright_status': job[3],
+                'source_id': job[4], 'decade': job[6], 'description': job[7], 'details': job[8], 'link': job[9],
+                'master_status': job[10], 'alerts': job[11], 'first_in': subtime(job[12]),
+                'first_out': subtime(job[13]), 'first_label': job[14], 'second_in': subtime(job[15]),
+                'second_out': subtime(job[16]), 'second_label': subtime(job[17]),
+                # all items that don't come from the csv file
+                'location': "", 'project_id': project_id, 'formated_asset_number': asset_number, 'downloaded': False,
+                'screener': False, 'file_name': file_name, 'date': dictdate, 'file_name_ext': "", 'keywords': keywords,
+                'year_categories': year_cats}
 
     return metadata
 
@@ -553,13 +575,21 @@ def main():
         print ("You must define a category")
         exit()
 
+    # Take care of keywords
+    key_words = ""
+    if csv_dump[0][4] != "" and csv_dump[0][4] != "$$Keywords":
+        key_words = csv_dump[0][4]
+
+    if verbosity >= 2:
+        print ("Keywords are: " + key_words)
+
     if verbosity >= 2:
         print ("Category path is: " + category)
 
     # copy the rest of the list, everything except first element
     after_first_item = False
     for item in csv_dump:
-        if after_first_item:
+        if after_first_item:    # so the first line in this list is skipped
             csv_first_pass.append(item)
         after_first_item = True  # need to mark we passed the first item
 
@@ -578,7 +608,7 @@ def main():
     for item in csv_first_pass:
 
         # put all our meta data in a nice dictionary
-        metadata = create_metadata(item, project_id, verbosity)
+        metadata = create_metadata(item, project_id, key_words, verbosity)
         jobs.append(metadata)
         if item[5] != "":  # Count the number of lines with links
             links = links + 1
@@ -634,12 +664,13 @@ def main():
             downloaded_jobs.append(job)  # this job was downloaded
         else:   # These jobs were not downloaded, add to separate list
             # Don't add to list if they are vanderbilt assets
-            if job['source'].lower() == "vanderbilt":
-                print ("vandy. not adding")
-            elif job['source'].lower() == "vandy":
-                print ("vandy. not adding")
-            else:
-                future_import_jobs.append(job)
+            #if job['source'].lower() == "vanderbilt":
+                #print ("vandy. not adding")
+            #elif job['source'].lower() == "vandy":
+                #print ("vandy. not adding")
+            #else:
+                #future_import_jobs.append(job)
+            future_import_jobs.append(job)
 
     # Check and see if we have any downloaded jobs
     if len(downloaded_jobs) > 0:

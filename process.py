@@ -134,7 +134,7 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
             # Mandatory fields
             metadata = CustomMetadata()  # Set metadata as CustomMetadata object
             metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'    # Add the id for metadata field
-            metadata.value = job['file_name']       # Add the value of the feild
+            metadata.value = job['file_name']       # Add the value of the field
             custom_metadata.append(metadata)    # append metadata to the list
             metadata = CustomMetadata()     # reset custom metadata object
             metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
@@ -155,20 +155,26 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
                 metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
                 metadata.value = job['source_id']
                 custom_metadata.append(metadata)
-            if job['description'] != "":
+            if job['details'] != "":
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
-                metadata.value = job['description']
+                metadata.value = job['details']
                 custom_metadata.append(metadata)
             if job['link'] != "":
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_LINK_20'
                 metadata.value = job['link']
                 custom_metadata.append(metadata)
-            if job['notes'] != "":
+            if job['alerts'] != "":
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_NOTES_32'
-                metadata.value = job['notes']
+                metadata.value = job['alerts']
+                #metadata.value = ""
+                custom_metadata.append(metadata)
+            if job['keywords'] != "":
+                metadata = CustomMetadata()
+                metadata.standard_id = 'CUST_FLD_NOTES_32'
+                metadata.value = job['keywords']
                 custom_metadata.append(metadata)
         if asset_type == SideCarType.vandy:
             print ("Do nothing right now")
@@ -179,11 +185,33 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
             metadata.standard_id = 'CUST_FLD_DATE_5'
             date = dict_date['year']
             if dict_date['month'] != "":    # test if month is present
-                date = date + "/" + dict_date['month']
+                date = date + "-" + dict_date['month']
             if dict_date['day'] != "":
-                date = date + "/" + dict_date['month']
+                date = date + "-" + dict_date['day']
             metadata.value = date
             custom_metadata.append(metadata)
+
+        # apply subclips
+        if job['first_label'] != "" or job['second_label'] != "":   # check to see if we have subclips
+            subclips = []                                           # in & out points must be clean
+            subclip = Subclip()
+            # first subclip
+            if job['first_label'] != "":
+                subclip.name = job['first_label']
+                subclip.start_time = job['first_in']
+                subclip.end_time = job['first_out']
+                subclips.append(subclip)
+            # second subclip
+            if job['second_label'] != "":
+                subclip = Subclip()
+                subclip.name = job['second_label']
+                subclip.start_time = job['second_in']
+                subclip.end_time = job['second_out']
+                subclips.append(subclip)
+            # apply subclips
+            asset.subclips = subclips
+
+
 
         # load meta data into asset
         asset.custom_metadata = custom_metadata
@@ -217,15 +245,12 @@ def sidecar_destination (choice=0):
             xmls.append(True)
             if os.path.ismount(XmlDrive.raid1):
                 raids.append(True)
-            else
+            else:
                 raids.append(False)
         else:
             # if xml mount fails to appear set both to false to we keep raid and xml list synced
             xmls.append(False)
             raids.append(False)
-
-
-
 
 
 def main():
