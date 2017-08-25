@@ -148,6 +148,10 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
             metadata.standard_id = 'CUST_FLD_PROJECT ID_29'
             metadata.value = job['project_id']
             custom_metadata.append(metadata)
+            metadata = CustomMetadata()
+            metadata.standard_id = 'CUST_FLD_IS ARCHIVAL_39'
+            metadata.value = "1"
+            custom_metadata.append(metadata)
 
             # Non mandatory fields
             if job['source_id'] != "":
@@ -173,7 +177,7 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
                 custom_metadata.append(metadata)
             if job['keywords'] != "":
                 metadata = CustomMetadata()
-                metadata.standard_id = 'CUST_FLD_NOTES_32'
+                metadata.standard_id = 'CUST_FLD_KEYWORDS_38'
                 metadata.value = job['keywords']
                 custom_metadata.append(metadata)
         if asset_type == SideCarType.vandy:
@@ -211,18 +215,24 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
             # apply subclips
             asset.subclips = subclips
 
-
-
         # load meta data into asset
         asset.custom_metadata = custom_metadata
 
         # Add category
-        asset.categories = category
+        category_list = []
+        for item in job['year_categories_list']:
+            if item != "":
+                category_list.append(item)
+        if category != "":
+            category_list.append(category)
+
+        asset.categories = category_list
 
         # load asset into list
         list_assets.append(asset)
 
     return list_assets
+
 
 def sidecar_destination (choice=0):
 

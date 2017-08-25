@@ -10,6 +10,7 @@ import os.path
 import xlsxwriter
 import retrosupport
 import time
+import string
 from retrosupport import process
 from retrosupport import media
 from retrosupport.process import volume_result
@@ -17,6 +18,7 @@ from retrosupport.process import  emam_metadata_format
 from retrosupport.process import SideCarType
 from retrosupport.retro_dl import retro_youtube_dl
 from retrosupport.emamsidecar import generate_sidecar_xml
+
 
 def set_argparse():
     # Start things off using pythons argparse. get user input and give help information
@@ -213,23 +215,112 @@ def pad_asset(asset, v=1):
 
     return return_asset
 
-def subtime(time, v=1):
+def subtime(timecode, v=1):
 
-    # no hour placement, pad with 0's
-    if time[0] == ":":
-        time = "00" + time
+    if timecode != "":
+        # no hour placement, pad with 0's
+        if timecode[0] == ":":
+            timecode = "00" + timecode
 
-    time = time + ":00"  # add frames
-    return time
+        timecode = timecode + ":00"  # add frames
+    return timecode
 
 
-def year_categories(years, v=1):
+# make sure the archival goes into the right master archival category based on date
+def year_categories(year, decade, v=1):
 
-    return years
+    year_inf = [False, False, False] # place holder to check req for year 0 is empty, 1 is digit, 2 is 4 characters
+    category_paths = [] # a holder for all our paths
+
+    category_path = "Archival/" # Root of master archival category
+    if year != "":
+        year_inf[0] = True # check to see if its an integer
+        if year.isdigit():
+            year_inf[1] = True
+        else:
+            if v >= 2:
+                print("Year is not correct format. Not a number")
+        if len(year) == 4: # check to see if the integer is 4 digits long
+            year_inf[2] = True
+        else:
+            if v >= 2:
+                print("Year is not in correct format. It is not a 4 digit number")
+    else:
+        if v >= 2:
+            print("This asset has no year entered")
+
+    if year_inf[0] and year_inf[1] and year_inf[2]:
+        int_year = int(year) # convert year to integer so we can compare
+        if int_year < 1950:
+            category_path = category_path + "1949-Under"
+        elif int_year < 1960:
+            if int_year < 1955:
+                category_path = category_path + "1950-1954/" + str(year)
+            else:
+                category_path = category_path + "1955-1959/" + str(year)
+        elif int_year < 1970:
+            if int_year < 1965:
+                category_path = category_path + "1960-1964/" + str(year)
+            else:
+                category_path = category_path + "1965-1969/" + str(year)
+        elif int_year < 1980:
+            if int_year < 1975:
+                category_path = category_path + "1970-1974/" + str(year)
+            else:
+                category_path = category_path + "1975-1979/" + str(year)
+        elif int_year < 1990:
+            if int_year < 1985:
+                category_path = category_path + "1980-1984/" + str(year)
+            else:
+                category_path = category_path + "1985-1989/" + str(year)
+        elif int_year < 2000:
+            if int_year < 1995:
+                category_path = category_path + "1990-1994/" + str(year)
+            else:
+                category_path = category_path + "1995-1999/" + str(year)
+        elif int_year < 2010:
+            if int_year < 2005:
+                category_path = category_path + "2000-2004/" + str(year)
+            else:
+                category_path = category_path + "2005-2009/" + str(year)
+        elif int_year < 2020:
+            if int_year < 2015:
+                category_path = category_path + "2010-2014/" + str(year)
+            else:
+                category_path = category_path + "2015-2019/" + str(year)
+        else:
+            category_path = ""
+            if v >= 1:
+                print("Error. Year is out of range for the master archival category")
+
+        category_paths.append(category_path)
+
+    # take care of decade
+    elif decade != "":
+        if "1940" in decade:
+            category_paths.append("Archival/1949-Under")
+        if "1950" in decade:
+            category_paths.append("Archival/1950-1959/Decade")
+        if "1960" in decade:
+            category_paths.append("Archival/1960-1969/Decade")
+        if "1970" in decade:
+            category_paths.append("Archival/1970-1979/Decade")
+        if "1980" in decade:
+            category_paths.append("Archival/1980-1989/Decade")
+        if "1990" in decade:
+            category_paths.append("Archival/1990-1999/Decade")
+        if "2000" in decade:
+            category_paths.append("Archival/2000-2009/Decade")
+        if "2010" in decade:
+            category_paths.append("Archival/2010-2019/Decade")
+    else:
+        if v >= 2:
+            print("No decade defined for this asset")
+    return category_paths
 
 
 # Put the meta data in a dictionary from the csv
-def create_metadata(job, project_id, keywords, v=1):
+def create_metadata(job, project_id, keywords, tracker_version, v=1):
 
     # pad asset number
     asset_number = pad_asset(job[0], v)
@@ -237,6 +328,10 @@ def create_metadata(job, project_id, keywords, v=1):
     textdate = job[5]
     dictdate = parse_date(textdate)
     # find our year categories
+    if dictdate['year'] != "" or job[6] != "":
+        year_categories_list = year_categories(dictdate['year'], job[6])
+    else:
+        year_categories_list = ["Archival/No-Date"]
 
     # build filename
     file_name = project_id + "_" + asset_number
@@ -256,18 +351,27 @@ def create_metadata(job, project_id, keywords, v=1):
     # A place to hold the dictionary titles in case of google sheet column re-arrangement. Date column is always skipped
     # asset_number source copy_holder copyright_status source_id decade description details link master_status
     # alerts first_in first_out first_label second_in second_out second_label status_license
-    # create our dictionary
-    metadata = {'asset_number': job[0], 'source': job[1], 'copy_holder': job[2], 'copyright_status': job[3],
-                'source_id': job[4], 'decade': job[6], 'description': job[7], 'details': job[8], 'link': job[9],
-                'master_status': job[10], 'alerts': job[11], 'first_in': subtime(job[12]),
-                'first_out': subtime(job[13]), 'first_label': job[14], 'second_in': subtime(job[15]),
-                'second_out': subtime(job[16]), 'second_label': subtime(job[17]),
-                # all items that don't come from the csv file
-                'location': "", 'project_id': project_id, 'formated_asset_number': asset_number, 'downloaded': False,
-                'screener': False, 'file_name': file_name, 'date': dictdate, 'file_name_ext': "", 'keywords': keywords,
-                'year_categories': year_cats}
+    # create our dictionary. A set for each verrsion number of the tracker forms
 
-    return metadata
+    if tracker_version == "1.0":
+        metadata = {'asset_number': job[0], 'source': job[1], 'copy_holder': job[2], 'copyright_status': job[3],
+                    'source_id': job[4], 'decade': job[6], 'description': job[7], 'details': job[8], 'link': job[9],
+                    'master_status': job[10], 'alerts': job[11], 'first_in': subtime(job[12]),
+                    'first_out': subtime(job[13]), 'first_label': job[14], 'second_in': subtime(job[15]),
+                    'second_out': subtime(job[16]), 'second_label': job[17],
+                    # all items that don't come from the csv file
+                    'location': "", 'project_id': project_id, 'formated_asset_number': asset_number,
+                    'downloaded': False, 'screener': False, 'file_name': file_name, 'date': dictdate,
+                    'file_name_ext': "", 'keywords': keywords, 'year_categories_list': year_categories_list}
+        return metadata
+    elif tracker_version == "":
+        print("Error: No tracker version present. Please check google sheet java script")
+        exit()
+    else:
+        print("Error: Tracker version not compatible with this script")
+        print("Also Cullen Golden missed his first day at Retro Report")
+
+    return "error"
 
 
 # Download the video, return the results
@@ -514,6 +618,14 @@ def post_download(args, job, rough_screener_path, v=1):
             else:
                 job['screener'] = False
 
+    # check to see if we need to rename a getty extension
+    if "gettyimages.com" in job['link']:
+        if "unknown_video" in job['file_name_ext']:
+            new_location = string.replace(job['location'], "unknown_video", "mp4")  # replace with mp4 extension
+            if not os.path.isfile(new_location):    # just in case for some reason file already exists
+                os.rename(job['location'], new_location)
+            job['location'] = new_location
+            job['file_name_ext'] = string.replace(job['file_name_ext'], "unknown_video", "mp4")
     return job
 
 
@@ -523,6 +635,20 @@ def find_xml(args):
         return "xml_ingest2"
     else:
         return "xml_ingest3"
+
+
+def download_check(meta_list):
+
+    if meta_list['link'] == "": # no link so return false
+          return False
+
+    answer = True   # what to return
+    web_url = ["archive.org"]
+    for url in web_url:
+        if url in meta_list['link']:
+            answer = False
+
+    return answer
 
 
 def main():
@@ -549,9 +675,12 @@ def main():
     csv_dump = csv_process(csv_path, verbosity)  # ingest the csv file
     csv_first_pass = []  # create our list to put jobs in
 
+    tracker_version = csv_dump[0][0]    # the all important tracker version so the right columns get there correct
+                                        # meta data assainment
+
     # check the project ID
     if args.project_id is None:
-        project_id = csv_dump[0][0]  # extract the project ID number
+        project_id = csv_dump[0][1]  # extract the project ID number
         if verbosity >= 2:
             print ("Using google sheet provided project id: " + project_id)
     else:
@@ -566,10 +695,8 @@ def main():
 
     # Grab the eMAM category for assets
 
-    if csv_dump[0][1] != "" and csv_dump[0][2] != "":
-        category = []
-        category.append(csv_dump[0][2] + "/" + project_id + " " +
-                        csv_dump[0][1] + "/" + csv_dump[0][3])  # the category from the csv file
+    if csv_dump[0][2] != "" and csv_dump[0][3] != "":
+        category = csv_dump[0][3] + "/" + project_id + " " + csv_dump[0][2] + "/" + csv_dump[0][4]
     else:
         print ("No category defined\n Will not go on")
         print ("You must define a category")
@@ -577,8 +704,8 @@ def main():
 
     # Take care of keywords
     key_words = ""
-    if csv_dump[0][4] != "" and csv_dump[0][4] != "$$Keywords":
-        key_words = csv_dump[0][4]
+    if csv_dump[0][5] != "" and csv_dump[0][4] != "$$Keywords":
+        key_words = csv_dump[0][5]
 
     if verbosity >= 2:
         print ("Keywords are: " + key_words)
@@ -598,6 +725,7 @@ def main():
 
     jobs = []  # create job list
     processed_jobs = []   # create list to hold processed jobs
+    errors = []  # hold the jobs with errors
     links = 0  # hold the number of jobs with links
 
     # Variable to determine if me make screener or not
@@ -607,11 +735,17 @@ def main():
     # Loop through the list and format each job
     for item in csv_first_pass:
 
-        # put all our meta data in a nice dictionary
-        metadata = create_metadata(item, project_id, key_words, verbosity)
-        jobs.append(metadata)
-        if item[5] != "":  # Count the number of lines with links
-            links = links + 1
+        if len(item) < 20:  # error catch
+            # all jobs should hav at least 20 elements
+            errors.append(item)
+            if verbosity >= 2:
+                print ("Job has too few items:\n" + item)
+        else:
+            # put all our meta data in a nice dictionary
+            metadata = create_metadata(item, project_id, key_words, tracker_version, verbosity)
+            jobs.append(metadata)
+            if item[5] != "":  # Count the number of lines with links
+                links = links + 1
 
     if verbosity >= 2:  # Some feedback for our user
         print ("\n" + str(len(jobs)) + " entries submitted, " + str(links) + " with links to download:")
@@ -627,12 +761,12 @@ def main():
 
     # download the videos in a loop
     for job in jobs:
-        if job['link'] != "":  # check to see if a link exists
+        try_download = download_check(job)  # boolean that will tell us to download or not
+        if try_download:  # check to see if a link exists
             download = download_video(job, location, verbosity)  # download the video store result
             if verbosity >= 3:
                 print ("\ndownload result from download_video function:")
                 print (download)
-
             if download == 0:  # download failed
                 job['downloaded'] = False
                 processed_jobs.append(job)
@@ -651,7 +785,7 @@ def main():
         else:
             job['downloaded'] = False  # No link so mark as failed download
             processed_jobs.append(job)
-            print ("\nSkipping " + job['file_name'] + "has no link")
+            print (job['file_name'] + " Will be added to future import xml")
 
     excel(processed_jobs, csv_path, verbosity)
 
@@ -698,9 +832,9 @@ def main():
         index = csv_path.rfind("/") + 1
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")    # create our time stamp
         location = csv_path[:index] + "future_sidecar_" + tstamp + ".xml"
+        print location
         generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
-                             future_job_xml_list,
-                             location)
+                             future_job_xml_list, location)
 
 if __name__ == "__main__":
     main()
