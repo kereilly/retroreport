@@ -30,6 +30,7 @@ class resolution_type(object):
     pal = 3
     hd_low = 4
     hd_high = 5
+    same = 6
 
 class formats(object):
     prores_proxy = 2
@@ -59,21 +60,25 @@ class XmlDrive(object):
     ingest1 = 3
     ingest2 = 4
     ingest3 = 5
-    ingets4 = 6
+    ingest4 = 6
+    ingest5 = 7
     path1 = "/Volumes/xml_ingest1"
     path2 = "/Volumes/xml_ingest2"
     path3 = "/Volumes/xml_ingest3"
     path4 = "/Volumes/xml_ingest4"
+    path5 = "/Volumes/xml_ingest5"
     raid1 = "/Volumes/RAID1_1"
     raid2 = "/Volumes/RAID2_1"
     raid3 = "/Volumes/RAID3_1"
     raid4 = "/Volumes/RAID4_1"
+    raid5 = "/Volumes/Raid5"
 
 class to_trim(object):
     false = 0
     true = 1
 
-def open_file(path, mode = "r"):
+
+def open_file(path, mode="r"):
 
     if os.path.isfile(path):
         processed_file = open(path, mode)
@@ -234,7 +239,7 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
     return list_assets
 
 
-def sidecar_destination (choice=0):
+def sidecar_destination(choice=0):
 
     if choice == XmlDrive.ingest1:
         if os.path.ismount(XmlDrive.path1):
@@ -250,7 +255,7 @@ def sidecar_destination (choice=0):
             return XmlDrive.path4
     else:
         xmls = []   # to hold list of xml mount booleans
-        raids= []   # to hold list of raid mount booleans
+        raids = []   # to hold list of raid mount booleans
         if os.path.ismount(XmlDrive.path1):
             xmls.append(True)
             if os.path.ismount(XmlDrive.raid1):

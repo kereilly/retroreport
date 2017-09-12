@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 from __future__ import unicode_literals
 # This script is meant to batch download archival from Retro Reports Archival Tracker form.
 # https://github.com/kereilly/retroreport
@@ -11,13 +12,19 @@ import xlsxwriter
 import retrosupport
 import time
 import string
+import sys
 from retrosupport import process
 from retrosupport import media
+from retrosupport import locate
 from retrosupport.process import volume_result
 from retrosupport.process import  emam_metadata_format
 from retrosupport.process import SideCarType
 from retrosupport.retro_dl import retro_youtube_dl
 from retrosupport.emamsidecar import generate_sidecar_xml
+
+# for unicode type issues
+reload(sys)
+sys.setdefaultencoding('utf8')
 
 
 def set_argparse():
@@ -35,6 +42,12 @@ def set_argparse():
     group_batch.add_argument("-d", "--output_directory", type=str,
                              help="Specify output directory to save to. Should already exist "
                                   "I won't make the Directory for you. Or maybe I will. Hmmmm.")
+    group_batch.add_argument("-l", "--later", "--later", action="store_true",
+                             help="Don't download any assets. Create xml for later download")
+    group_batch.add_argument("-e", "--extension", type=str,
+                             help="Overide '.mov' extension for assets not downloaded")
+    group_batch.add_argument("-f", "--force_extension", action="store_true",
+                             help="force custom extension even if url found in extension library")
     group_batch.add_argument("-r", "--project_id", type=str,
                              help="Override the Google Sheets provided project ID")
     # now regular arguments
@@ -57,6 +70,43 @@ def set_argparse():
     return pack
 
 
+def clean_latin1(data):
+    LATIN_1_CHARS = (
+        ('\xe2\x80\x99', "'"),
+        ('\xc3\xa9', 'e'),
+        ('\xe2\x80\x90', '-'),
+        ('\xe2\x80\x91', '-'),
+        ('\xe2\x80\x92', '-'),
+        ('\xe2\x80\x93', '-'),
+        ('\xe2\x80\x94', '-'),
+        ('\xe2\x80\x94', '-'),
+        ('\xe2\x80\x98', "'"),
+        ('\xe2\x80\x9b', "'"),
+        ('\xe2\x80\x9c', '"'),
+        ('\xe2\x80\x9c', '"'),
+        ('\\xe2\\x80\\x9d', '"'),
+        ('\xe2\x80\x9e', '"'),
+        ('\xe2\x80\x9f', '"'),
+        ('\xe2\x80\xa6', '...'),
+        ('\xe2\x80\xb2', "'"),
+        ('\xe2\x80\xb3', "'"),
+        ('\xe2\x80\xb4', "'"),
+        ('\xe2\x80\xb5', "'"),
+        ('\xe2\x80\xb6', "'"),
+        ('\xe2\x80\xb7', "'"),
+        ('\xe2\x81\xba', "+"),
+        ('\xe2\x81\xbb', "-"),
+        ('\xe2\x81\xbc', "="),
+        ('\xe2\x81\xbd', "("),
+        ('\xe2\x81\xbe', ")")
+    )
+
+    data = data.decode('iso-8859-1')
+    for _hex, _char in LATIN_1_CHARS:
+        data = data.replace(_hex, _char)
+    return data.encode('utf8')
+
+
 def csv_process(path, verbosity=1):
     # Open the csv file to work on
     if verbosity >= 2:
@@ -70,10 +120,21 @@ def csv_process(path, verbosity=1):
     else:
         reader = csv.reader(csv_file)
         jobs_list = list(reader)  # convert reader to list
+
+        # clean any strange unicode characters
+        jobs_list_clean = []
+        job_clean = []
+
+        for job in jobs_list:
+            for text in job:
+                clean_latin1(text)
+                job_clean.append(text)
+            jobs_list_clean.append(job_clean)
+            job_clean = []
         if verbosity >= 3:
             print ("output of CSV file:")
-            for line in jobs_list:
-                print (line)
+            for item in jobs_list_clean:
+                print (item)
             print ("")
         return jobs_list
 
@@ -189,6 +250,9 @@ def format_string(string):
     return_string = return_string.replace("'", "")
     return_string = return_string.replace(';', "")
     return_string = return_string.replace(",", "")
+    return_string = return_string.replace(":", "")
+    #remove special characters
+    return_string = cleanspecialcharacters(return_string)
 
     return return_string
 
@@ -217,6 +281,8 @@ def pad_asset(asset, v=1):
 
 def subtime(timecode, v=1):
 
+    if v >= 3:
+        print ("inside subtime fuction")
     if timecode != "":
         # no hour placement, pad with 0's
         if timecode[0] == ":":
@@ -332,6 +398,9 @@ def create_metadata(job, project_id, keywords, tracker_version, v=1):
         year_categories_list = year_categories(dictdate['year'], job[6])
     else:
         year_categories_list = ["Archival/No-Date"]
+    # Check keywords
+    if keywords == "$$Keywords":
+        keywords = ""   # that is the default value and should be erased.
 
     # build filename
     file_name = project_id + "_" + asset_number
@@ -341,28 +410,30 @@ def create_metadata(job, project_id, keywords, tracker_version, v=1):
         file_name = file_name + "_" + dictdate['month']
     if dictdate['day'] != "":
         file_name = file_name + "_" + dictdate['day']
-    field = format_string(job[1])
+    field = format_string(job[1])   # Source
     if field != "":
         file_name = file_name + "_" + field
-    field = format_string(job[2])
+    field = format_string(job[4])   # Source ID
     if field != "":
         file_name = file_name + "_" + field
 
     # A place to hold the dictionary titles in case of google sheet column re-arrangement. Date column is always skipped
     # asset_number source copy_holder copyright_status source_id decade description details link master_status
     # alerts first_in first_out first_label second_in second_out second_label status_license
-    # create our dictionary. A set for each verrsion number of the tracker forms
+    # create our dictionary. A set for each version number of the tracker forms
 
     if tracker_version == "1.0":
         metadata = {'asset_number': job[0], 'source': job[1], 'copy_holder': job[2], 'copyright_status': job[3],
-                    'source_id': job[4], 'decade': job[6], 'description': job[7], 'details': job[8], 'link': job[9],
+                    'source_id': job[4], 'decade': job[6], 'description': job[7],
+                    'details': cleanspecialcharacters(job[8]), 'link': job[9],
                     'master_status': job[10], 'alerts': job[11], 'first_in': subtime(job[12]),
                     'first_out': subtime(job[13]), 'first_label': job[14], 'second_in': subtime(job[15]),
                     'second_out': subtime(job[16]), 'second_label': job[17],
                     # all items that don't come from the csv file
                     'location': "", 'project_id': project_id, 'formated_asset_number': asset_number,
                     'downloaded': False, 'screener': False, 'file_name': file_name, 'date': dictdate,
-                    'file_name_ext': "", 'keywords': keywords, 'year_categories_list': year_categories_list}
+                    'file_name_ext': "", 'keywords': keywords, 'year_categories_list': year_categories_list,
+                    'encoded': False}
         return metadata
     elif tracker_version == "":
         print("Error: No tracker version present. Please check google sheet java script")
@@ -370,6 +441,7 @@ def create_metadata(job, project_id, keywords, tracker_version, v=1):
     else:
         print("Error: Tracker version not compatible with this script")
         print("Also Cullen Golden missed his first day at Retro Report")
+        exit()
 
     return "error"
 
@@ -387,7 +459,7 @@ def download_video(job, download_location, verbosity=1, ):
 
 
 # Create an excel spreadsheet
-def excel(jobs, csv_path, v=1):
+def excel(jobs, csv_path, errors, v=1):
 
     index = csv_path.rfind("/") + 1
     tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # create our time stamp
@@ -398,7 +470,7 @@ def excel(jobs, csv_path, v=1):
 
     # Create the workbook and sheet
     workbook = xlsxwriter.Workbook(file_location)
-    workbook.set_size(1275, 1800)
+    workbook.set_size(1350, 1800)
     worksheet = workbook.add_worksheet('Retro Report')
 
     # Formatting
@@ -454,28 +526,35 @@ def excel(jobs, csv_path, v=1):
     })
 
     # Make all the headers
-    worksheet.merge_range('A1:G1', 'Retro eMAM Auto Downloader Report', merge_format)
+    worksheet.merge_range('A1:K1', 'Retro eMAM Auto Downloader Report', merge_format)
     worksheet.write('A2', 'Asset', header_format)
     worksheet.write('B2', '', header_format)
     worksheet.write('C2', 'File Name', header_format)
     worksheet.write('D2', '', header_format)
-    worksheet.write('E2', 'Downloaded', header_format)
+    worksheet.write('E2', 'Download', header_format)
     worksheet.write('F2', '', header_format)
-    worksheet.write('G2', 'Screener', header_format)
+    worksheet.write('G2', 'G.S.', header_format)
+    worksheet.write('H2', '', header_format)
+    worksheet.write('I2', 'Re', header_format)
+    worksheet.write('J2', '', header_format)
+    worksheet.write('K2', 'Error', header_format)
 
     # Adjust column widths
     worksheet.set_column(0, 0, 9)
     worksheet.set_column(1, 1, 1)
-    worksheet.set_column(2, 2, 100)
+    worksheet.set_column(2, 2, 90)
     worksheet.set_column(3, 3, 1)
-    worksheet.set_column(4, 4, 20)
+    worksheet.set_column(4, 4, 18)
     worksheet.set_column(5, 5, 1)
-    worksheet.set_column(6, 6, 18)
+    worksheet.set_column(6, 6, 8)
+    worksheet.set_column(7, 7, 1)
+    worksheet.set_column(8, 8, 8)
+    worksheet.set_column(9, 9, 1)
+    worksheet.set_column(10, 10, 10)
 
     # Adjust row widths
     worksheet.set_row(0, 70)
     worksheet.set_row(1, 35)
-    # worksheet.set_r
 
     # Freeze top two rows & other formatting
     worksheet.freeze_panes(2, 0)
@@ -490,12 +569,31 @@ def excel(jobs, csv_path, v=1):
             worksheet.write(row, 2, job['file_name'], file_name_success_format)
             worksheet.write(row, 4, 'YES', download_success_format)
             worksheet.write(row, 6, job['screener'], file_name_success_format)
+            if job['encoded'] == True:
+                worksheet.write(row, 8, 'Yes', download_fail_format)
+            else:
+                worksheet.write(row, 8, 'No', download_success_format)
         else:
             worksheet.write(row, 0, job['asset_number'], asset_fail_format)
             worksheet.write(row, 2, job['file_name'], file_name_fail_format)
             worksheet.write(row, 4, 'NO!', download_fail_format)
-            worksheet.write(row, 6, job['screener'], file_name_success_format)
+            worksheet.write(row, 6, job['screener'], asset_fail_format)
+            worksheet.write(row, 8, 'No', download_success_format)
+
         row = row + 1
+    row = row + 1
+    #  Put in the errors
+    if len(errors) > 0:
+        ranged = "A" + str(row) + ":" + "K" + str(row)
+        worksheet.merge_range(ranged, 'Errors', merge_format)
+        row = row - 1
+        worksheet.set_row(row, 60)
+        row = row + 1
+        for error in errors:
+            worksheet.write(row, 10, '', download_fail_format)
+            worksheet.write(row, 2, error, file_name_fail_format)
+            row = row + 1
+
 
     workbook.close()
 
@@ -592,7 +690,7 @@ def google_drive_screener(job, path, v=1):
 
 # What to do with the file after its downloaded
 # Make screener, re-encode for compatibility, etc
-def post_download(args, job, rough_screener_path, v=1):
+def post_download(job, rough_screener_path, v=1):
 
     #  Check if we need to make a screener
     if rough_screener_path is not None:
@@ -600,7 +698,6 @@ def post_download(args, job, rough_screener_path, v=1):
         #  Search for archival screener location etc.
         if rough_screener_path == "/Volumes/Google_Drive/_RETRO_SHARED/STORY_FOLDERS":
             job = google_drive_screener(job, rough_screener_path, v)
-            return job
         else:
             # Custom download location
             if rough_screener_path[-1:] == '/':    # we don't need to add a trailing slash
@@ -614,7 +711,6 @@ def post_download(args, job, rough_screener_path, v=1):
             # Check and see if screener was really created
             if os.path.isfile(screener_path + ".mp4"):
                 job['screener'] = True
-                return job
             else:
                 job['screener'] = False
 
@@ -626,6 +722,36 @@ def post_download(args, job, rough_screener_path, v=1):
                 os.rename(job['location'], new_location)
             job['location'] = new_location
             job['file_name_ext'] = string.replace(job['file_name_ext'], "unknown_video", "mp4")
+
+    # check to see if we need to re encode video
+    encode_list = ["mkv", "webm"]
+    encode = False
+    for extension in encode_list:
+        if extension in job['file_name_ext']:
+            encode = True
+
+    if encode:
+        #  we had a hit with our extention match
+        #  strip old extention out of file.
+        index = job['location'].rfind(".") + 1
+        destination = job['location'][:index] + "mov"
+        media_info = retrosupport.media.getinfo(job['location'])
+        if v >= 3:
+            print(media_info)
+        #  no trimmping supported. we take the whole file
+        trim = [retrosupport.process.to_trim.false]
+        print trim
+        new_location = retrosupport.media.ffmpeg(job['location'], destination, media_info,
+                                                 retrosupport.process.resolution_type.same,
+                                                 trim, v, retrosupport.process.formats.prores_lt)
+        #  erase old fle put in path to new file
+        if os.path.isfile(new_location):
+            os.remove(job['location'])
+            job['location'] = new_location
+            job['encoded'] = True
+            index = new_location.rfind("/") + 1
+            job['file_name_ext'] = new_location[index:]
+
     return job
 
 
@@ -637,10 +763,12 @@ def find_xml(args):
         return "xml_ingest3"
 
 
-def download_check(meta_list):
+def download_check(meta_list, force_skip):
 
-    if meta_list['link'] == "": # no link so return false
-          return False
+    if force_skip:
+        return False    # user has selected to download the videos later
+    if meta_list['link'] == "":  # no link so return false
+        return False
 
     answer = True   # what to return
     web_url = ["archive.org"]
@@ -649,6 +777,29 @@ def download_check(meta_list):
             answer = False
 
     return answer
+
+
+def cleanspecialcharacters(s):
+    s = s.decode('unicode_escape').encode('ascii', 'ignore')
+    return s
+
+
+def choose_extension(url, ext):
+
+    if "archive.org" in url:
+        return ".mp4"
+    elif "aparchive.com" in url:
+        return ".mp4"
+    elif "gettyimages.com" in url:
+        return ".mp4"
+    elif "archives.gov" in url:
+        return ".mp4"
+    else:
+        if ext[0] == ".":
+            return ext
+        else:
+            ext = "." + ext
+            return ext
 
 
 def main():
@@ -663,55 +814,114 @@ def main():
     check_args(args)
     verbosity = args.verbosity
     csv_path = args.input
-
+    force_skip = args.later
     xml_path = find_xml(args)
+
+    # check about the extension
+    extension = ".mov"
+    if args.extension is not None:
+        # check for the '.'
+        if args.extension[0] == ".":
+            extension = args.extension
+        else:
+            extension = "." + args.extension
+    force_extension = args.force_extension
+
+    # setup log file
+    if verbosity >= 3:
+        tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
+        index = csv_path.rfind("/") + 1
+        log_path = csv_path[:index] + "emam_log_" + tstamp + "_.txt"
+        print("Verbsity set to 3 or greater. Generating log file at: " + log_path)
+        f = open(log_path, 'w+')
+        f.write(str("log opened " + tstamp))
+        f.write("\n\nUser Input:\n")
+        f.write(str(args))
+        f.write("\nEnd user input\n\n")
+        f.write("Checking automated required arguments:\n")
 
     # Multithreading not supported yet. Warn user if enabled
     if args.multi_thread:
-        print ("You enabled Multithreading. At this point it is not supported but hopefully soon")
-        print ("The -m flag will be ignored\n")
+        if verbosity >=1:
+            print ("You enabled Multithreading. At this point it is not supported but hopefully soon")
+            print ("The -m flag will be ignored\n")
 
     # put all our jobs from the csv file into an array
     csv_dump = csv_process(csv_path, verbosity)  # ingest the csv file
     csv_first_pass = []  # create our list to put jobs in
 
-    tracker_version = csv_dump[0][0]    # the all important tracker version so the right columns get there correct
-                                        # meta data assainment
+    tracker_version = csv_dump[0][0]    # the all important tracker version so the right columns get
+    # the correct meta data assignment
 
     # check the project ID
     if args.project_id is None:
         project_id = csv_dump[0][1]  # extract the project ID number
         if verbosity >= 2:
             print ("Using google sheet provided project id: " + project_id)
+            if verbosity >= 3:
+                f.write("Using Google Sheet provided Project ID: ")
+                f.write(str(project_id))
+                f.write("\n")
     else:
         project_id = args.project_id
         if verbosity >= 2:
             print ("Using user provided provided project id: " + project_id)
+            if verbosity >= 3:
+                f.write("Using User provided project ID: ")
+                f.write(str(project_id))
+                f.write("\n")
 
     if project_id == "$$ProjectID":
-        print ("The Google Sheet JavaScript did not provide a project ID")
-        print ("Specify your own project ID with the -r flag. Downloader will not continue")
+        if verbosity >= 1:
+            print ("The Google Sheet JavaScript did not provide a project ID")
+            print ("Specify your own project ID with the -r flag. Downloader will not continue")
+            if verbosity >= 3:
+                f.write("Google Sheet failed to provide project ID. Progam will Exit")
+                f.close()
         exit()
 
     # Grab the eMAM category for assets
-
     if csv_dump[0][2] != "" and csv_dump[0][3] != "":
         category = csv_dump[0][3] + "/" + project_id + " " + csv_dump[0][2] + "/" + csv_dump[0][4]
+        if verbosity >= 2:
+            message = "Category path is: " + category
+            print (message)
+            if verbosity >= 3:
+                f.write("Google sheet provided ")
+                f.write(str(message))
+                f.write("\n")
     else:
-        print ("No category defined\n Will not go on")
-        print ("You must define a category")
+        if verbosity >= 1:
+            print ("No category defined\n Will not go on")
+            print ("You must define a category")
+            if verbosity >= 3:
+                f.write("Google Sheet failed to provide the category path\n")
+                f.write("program will exit")
+                f.close()
         exit()
 
     # Take care of keywords
     key_words = ""
-    if csv_dump[0][5] != "" and csv_dump[0][4] != "$$Keywords":
+    if csv_dump[0][5] != "" and csv_dump[0][5] != "$$Keywords":
         key_words = csv_dump[0][5]
 
-    if verbosity >= 2:
-        print ("Keywords are: " + key_words)
+        if verbosity >= 2:
+            print ("Keywords are: " + key_words)
 
-    if verbosity >= 2:
-        print ("Category path is: " + category)
+        if verbosity >= 3:
+            f.write("Google sheet provided Keywords: ")
+            f.write(key_words)
+            f.write("\n")
+    else:
+        if verbosity >= 2:
+            message = "No Keywords provided by Google Sheet"
+            print (message)
+        if verbosity >= 3:
+            f.write(str(message))
+            f.write("\n")
+
+    if verbosity >=3:
+        f.write("End check of automated arguments\n\n")
 
     # copy the rest of the list, everything except first element
     after_first_item = False
@@ -721,7 +931,8 @@ def main():
         after_first_item = True  # need to mark we passed the first item
 
     if verbosity >= 1:
-        print (str(len(csv_first_pass)) + " jobs to process")
+        message = str(len(csv_first_pass)) + " jobs to process"
+        print (message)
 
     jobs = []  # create job list
     processed_jobs = []   # create list to hold processed jobs
@@ -733,22 +944,67 @@ def main():
     screeners = check_screeners(args, verbosity)
 
     # Loop through the list and format each job
+    if verbosity >= 3:
+        f.write("Begin looping through job list:\nNote date won't display correct in log\n\n")
+
+    csv_count = 2   # keep track of what line we are on for error reporting. Start at two because 1st line skipped
     for item in csv_first_pass:
 
-        if len(item) < 20:  # error catch
+        #  Catch Errors. Important so we don't put bad data into emam
+        if len(item) < 20:  # error catch not enough elements
             # all jobs should hav at least 20 elements
-            errors.append(item)
+            message_assest = ""
+            if str(item[0]) != "":
+                message_assest = str(item[0])
+            else:
+                message_assest = "Unknown at csv line: " + str(csv_count) + " "
+            message = "Asset: " + message_assest + " has too few elements: " + str(len(item))
+            errors.append(message)
             if verbosity >= 2:
-                print ("Job has too few items:\n" + item)
+                print ("Job has too few items:\n" + str(item))
+            if verbosity >=3:
+                f.write("Asset has too few elements. Skipping: ")
+                f.write(str(item))
+                f.write("\n")
+        elif not item[0].isdigit():  # No asset number
+            #  log
+            if verbosity >=3:
+                f.write("Asset is missing its asset #. Skipping: ")
+                f.write(str(item))
+                f.write("\n")
+            message = "Line in CSV File Missing asset number at csv line: " + str(csv_count)
+            errors.append(message)
         else:
             # put all our meta data in a nice dictionary
             metadata = create_metadata(item, project_id, key_words, tracker_version, verbosity)
             jobs.append(metadata)
+
+            # log
+            if verbosity >= 3:
+                message = "Asset #: " + item[0] + "\n"
+                f.write(message)
+                for k, v in metadata.items():
+                    f.write("\t")
+                    if hasattr(v, '__iter__'):
+                        f.write(k)
+                    else:
+                        line = k + " : " + str(v) + '\n'
+                        f.write(line)
+                f.write("\n")
+
             if item[5] != "":  # Count the number of lines with links
                 links = links + 1
+        csv_count = csv_count + 1
 
     if verbosity >= 2:  # Some feedback for our user
-        print ("\n" + str(len(jobs)) + " entries submitted, " + str(links) + " with links to download:")
+        message = str(len(jobs)) + " entries submitted, " + str(links) + " with links to download:"
+        print (message)
+
+        #  log
+        if verbosity >= 3:
+            f.write(message)
+            f.write("\n")
+
         for job in jobs:
             if job['link'] != "":
                 print ("\tFile name for asset " + job['asset_number'] + " is: " + job['file_name'])
@@ -761,12 +1017,24 @@ def main():
 
     # download the videos in a loop
     for job in jobs:
-        try_download = download_check(job)  # boolean that will tell us to download or not
+        try_download = download_check(job, force_skip)  # boolean that will tell us to download or not
+
+        # log
+        if verbosity >= 3:
+            message = "\nAsset: " + job['asset_number'] + "\n\t"
+            f.write(message)
+            if try_download:
+                f.write("Passed Download Test")
+            else:
+                f.write("Failed Download Test")
         if try_download:  # check to see if a link exists
             download = download_video(job, location, verbosity)  # download the video store result
+
+            #  log
             if verbosity >= 3:
                 print ("\ndownload result from download_video function:")
                 print (download)
+
             if download == 0:  # download failed
                 job['downloaded'] = False
                 processed_jobs.append(job)
@@ -777,7 +1045,7 @@ def main():
                     # get the real file name with the extension and save it
                     head, tail = os.path.split(download)
                     job['file_name_ext'] = tail
-                    job = post_download(args, job, screeners, verbosity)
+                    job = post_download(job, screeners, verbosity)
                     processed_jobs.append(job)
                 else:
                     job['downloaded'] = False   # files doesn't exists so no download
@@ -787,7 +1055,7 @@ def main():
             processed_jobs.append(job)
             print (job['file_name'] + " Will be added to future import xml")
 
-    excel(processed_jobs, csv_path, verbosity)
+    excel(processed_jobs, csv_path, errors, verbosity)
 
     # Split the list in two. One for downloaded assets and one for all others
     downloaded_jobs = []    # holds the assets that we have ready
@@ -797,33 +1065,44 @@ def main():
         if job['downloaded']:   # downloaded holds a boolean
             downloaded_jobs.append(job)  # this job was downloaded
         else:   # These jobs were not downloaded, add to separate list
-            # Don't add to list if they are vanderbilt assets
-            #if job['source'].lower() == "vanderbilt":
-                #print ("vandy. not adding")
-            #elif job['source'].lower() == "vandy":
-                #print ("vandy. not adding")
-            #else:
-                #future_import_jobs.append(job)
             future_import_jobs.append(job)
 
     # Check and see if we have any downloaded jobs
     if len(downloaded_jobs) > 0:
 
+        # create a log file of the data before its sent to xml
+        if verbosity >= 3:
+            for items in downloaded_jobs:
+                for k, v in items.items():
+                    if hasattr(v, '__iter__'):
+                        f.write(k)
+                    else:
+                        line = k + " : " + str(v) + '\n'
+                        f.write(line)
+                f.write("\n")
+
         # Get the xml ready for files that we have now
         downloaded_job_xml_list = emam_metadata_format(downloaded_jobs, category, SideCarType.tracker, xml_path)
 
         # Create our xml file
-        tstamp = time.strftime("%Y_%m_%d_T_%H_%M")      # hold hte current date and time
+        tstamp = time.strftime("%Y_%m_%d_T_%H_%M")      # hold thr current date and time
         location = location + "sidecar_" + tstamp + ".xml"
 
         generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
                              downloaded_job_xml_list, location)
 
     # Get xml ready for files we will have in the future
+    print "oVER HERERE"
+    print len(future_import_jobs)
     if len(future_import_jobs) > 0:     # make sure we have items in the list
+
         # need to add a generic file extension since files weren't downloaded
-        for job in future_import_jobs:
-            job['file_name_ext'] = job['file_name'] + ".mov"   # Mov's are most likely extension
+        if force_extension:
+            for job in future_import_jobs:
+                job['file_name_ext'] = job['file_name'] + extension   # Mov's are most likely extension
+        else:
+            for job in future_import_jobs:
+                job['file_name_ext'] = job['file_name'] + choose_extension(job['link'], extension)
 
         # format our metadata
         future_job_xml_list = emam_metadata_format(future_import_jobs, category, SideCarType.tracker, xml_path)
@@ -832,9 +1111,14 @@ def main():
         index = csv_path.rfind("/") + 1
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")    # create our time stamp
         location = csv_path[:index] + "future_sidecar_" + tstamp + ".xml"
-        print location
         generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
                              future_job_xml_list, location)
+
+    tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
+    message = "Closing log " + tstamp
+    f.write(message)
+    f.close()
+    exit()
 
 if __name__ == "__main__":
     main()

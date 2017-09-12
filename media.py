@@ -416,7 +416,7 @@ def trim_illegal(trim, verbosity=1):
     return is_illegal
 
 
-def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=formats.copy, rate=29.97):
+def ffmpeg(source, destnation, media_info, resolution, trim, verbosity=1, codec=formats.copy, rate=29.97):
 
     # put the rate variable in a string
     rate = "-r " + str(rate)
@@ -436,7 +436,7 @@ def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=format
         start_trim = ""
         end_trim = ""
     else:
-        trim = trim_calc(trim, media_info, verbosity)
+        trim = trim_calc(trim, verbosity)
         if trim[0] == user_syntax.invalid:
             start_trim = ""
             end_trim = ""
@@ -472,7 +472,7 @@ def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=format
             print (str(720 - width) + " in width padding and " + str(608 - height) + " in height padding will be added")
             print ("Offset is: " + pad1 + ":" + pad2 + " adding 32 pixels to height for imx50 Pal conformity")
 
-    if resolution == resolution_type.hd_high or resolution_type.hd_low:  # for now pad footage
+    if resolution == resolution_type.hd_high or resolution == resolution_type.hd_low:  # for now pad footage
                                                                         # with lower than 1280x720 the same
         if not width == 1920 or not height == 1080:  # if one of the demensions is off we need to fix it.
             if verbosity >= 1:
@@ -482,6 +482,9 @@ def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=format
             hd_filters = '-vf "' + scale + ',pad=1920:1080:' + pad1 + ":" + pad2 + '" '
         else:
             hd_filters = "-s 1920:1080 "
+
+    if resolution == resolution_type.same:
+        scale = ""
 
     # now for the specific formats
     if codec == formats.imx50:  # imx50
@@ -507,9 +510,15 @@ def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=format
         line_2 = "-flags ilme -top 1 -acodec pcm_s24le -ar 48000 -pix_fmt yuv422p"
         options = line_1 + line_2
 
+    elif codec == formats.prores_lt:
+        options = "-c:v prores -profile:v 3 -strict 2"
+
+    else:
+        options = "-c:v prores -profile:v 3 -strict 2"
+
     # Create the command with all our options
     cmd = """ffmpeg %s -i %s %s %s %s %s""" % (
-            start_trim, source, end_trim, rate, options, dest)
+        start_trim, source, end_trim, rate, options, destnation)
 
     if verbosity >= 3:
         print ("\n\n\n ******FFMPEG COMMAND******\n")
@@ -519,24 +528,24 @@ def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=format
     run_command(cmd, verbosity, "FFMPEG", media_info['frames'])
 
     # More post processing if we are working with HD footage
-    if resolution == resolution_type.hd_high or resolution_type.hd_low:
-        if os.path.isfile(dest):
-            size_transcoded = os.path.getsize(dest)
+    if resolution == resolution_type.hd_high or resolution == resolution_type.hd_low:
+        if os.path.isfile(destnation):
+            size_transcoded = os.path.getsize(destnation)
             size_original = os.path.getsize(source)
             if verbosity >= 2:
                 print ("Size of original file: " + str(size_original))
                 print ("Size of transcoded file: " + str(size_transcoded))
             if size_transcoded > 300:
-                source = dest
+                source = destnation
                 index = source.rfind(".")  # to index where the extention starts
-                dest = source[:index] + "_BMX.mxf"
-                cmd = "bmxtranswrap -p -o %s %s" % (dest, source)
+                destnation = source[:index] + "_BMX.mxf"
+                cmd = "bmxtranswrap -p -o %s %s" % (destnation, source)
                 # Call BMX
                 if verbosity >= 1:
                     print ("Running bmxtranswrap to re-wrap clips in mxf format for fast Avid import")
                 run_command(cmd, verbosity, "bmx")
-                if os.path.isfile(dest):
-                    dest_info = getinfo(dest)
+                if os.path.isfile(destnation):
+                    dest_info = getinfo(destnation)
                     source_info = getinfo(source)
                     if verbosity >= 3:
                         print ("\nSource frame count: " + str(dest_info['frames']))
@@ -553,7 +562,7 @@ def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=format
                             print ("A " + str((dest_info['frames'] - source_info['frames'])) +
                                    " frame difference between the two")
                             print ("ffmpeg: " + source)
-                            print ("-check this one: bmx " + dest)
+                            print ("-check this one: bmx " + destnation)
                 else:
                     if verbosity >= 1:
                         print ("Can't find BMX's output file")
@@ -563,8 +572,9 @@ def ffmpeg(source, dest, media_info, resolution, trim, verbosity=1, codec=format
         else:
             if verbosity >= 1:
                 print ("Something went wrong with ffmpeg transcoding")
-                print ("Life sucks sometimes.")
-    return dest
+
+
+    return destnation
 
 
 #   Create the ffmpeg command line string for screeners
