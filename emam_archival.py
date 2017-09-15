@@ -196,14 +196,14 @@ def month_text_to_number(string):
 
 
 # parse the expected date format from google sheets YYYY MMM DD
-def parse_date(string, v=1):
+def parse_date(stringy, v=1):
 
     # split the string into a list separated by spaces
-    elements = string.split()
+    elements = stringy.split()
 
     # touble shooting
     if v >= 3:
-        print ("\nraw string sent to parse_date:\n " + string)
+        print ("\nraw string sent to parse_date:\n " + stringy)
         print ("String broken into elements:")
         print (elements)
 
@@ -295,18 +295,18 @@ def subtime(timecode, v=1):
 # make sure the archival goes into the right master archival category based on date
 def year_categories(year, decade, v=1):
 
-    year_inf = [False, False, False] # place holder to check req for year 0 is empty, 1 is digit, 2 is 4 characters
-    category_paths = [] # a holder for all our paths
+    year_inf = [False, False, False]  # place holder to check req for year. 0 is empty, 1 is digit, 2 is 4 characters
+    category_paths = []  # a holder for all our paths
 
-    category_path = "Archival/" # Root of master archival category
+    category_path = "Archival/"  # Root of master archival category
     if year != "":
-        year_inf[0] = True # check to see if its an integer
+        year_inf[0] = True  # check to see if its an integer
         if year.isdigit():
             year_inf[1] = True
         else:
             if v >= 2:
                 print("Year is not correct format. Not a number")
-        if len(year) == 4: # check to see if the integer is 4 digits long
+        if len(year) == 4:  # check to see if the integer is 4 digits long
             year_inf[2] = True
         else:
             if v >= 2:
@@ -316,44 +316,81 @@ def year_categories(year, decade, v=1):
             print("This asset has no year entered")
 
     if year_inf[0] and year_inf[1] and year_inf[2]:
-        int_year = int(year) # convert year to integer so we can compare
-        if int_year < 1950:
-            category_path = category_path + "1949-Under"
+        int_year = int(year)  # convert year to integer so we can compare
+        if int_year < 1920:
+            category_path = category_path + "1919-Under"
+        elif int_year < 1930:
+            category_path = category_path + "1920-1929/"
+            if int_year < 1925:
+                category_path = category_path + "1920-1924/" + str(year)
+            else:
+                category_path = category_path + "1925-1929/" + str(year)
+        elif int_year < 1940:
+            category_path = category_path + "1930-1939/"
+            if int_year < 1935:
+                category_path = category_path + "1930-1934/" + str(year)
+            else:
+                category_path = category_path + "1935-1939/" + str(year)
+        elif int_year < 1950:
+            category_path = category_path + "1940-1949/"
+            if int_year < 1945:
+                category_path = category_path + "1940-1944/" + str(year)
+            else:
+                category_path = category_path + "1945-1949/" + str(year)
         elif int_year < 1960:
+            category_path = category_path + "1950-1959/"
             if int_year < 1955:
                 category_path = category_path + "1950-1954/" + str(year)
             else:
                 category_path = category_path + "1955-1959/" + str(year)
         elif int_year < 1970:
+            category_path = category_path + "1960-1969/"
             if int_year < 1965:
                 category_path = category_path + "1960-1964/" + str(year)
             else:
                 category_path = category_path + "1965-1969/" + str(year)
         elif int_year < 1980:
+            category_path = category_path + "1970-1979/"
             if int_year < 1975:
                 category_path = category_path + "1970-1974/" + str(year)
             else:
                 category_path = category_path + "1975-1979/" + str(year)
         elif int_year < 1990:
+            category_path = category_path + "1980-1989/"
             if int_year < 1985:
                 category_path = category_path + "1980-1984/" + str(year)
             else:
                 category_path = category_path + "1985-1989/" + str(year)
         elif int_year < 2000:
+            category_path = category_path + "1990-1999/"
             if int_year < 1995:
                 category_path = category_path + "1990-1994/" + str(year)
             else:
                 category_path = category_path + "1995-1999/" + str(year)
         elif int_year < 2010:
+            category_path = category_path + "2000-2009/"
             if int_year < 2005:
                 category_path = category_path + "2000-2004/" + str(year)
             else:
                 category_path = category_path + "2005-2009/" + str(year)
         elif int_year < 2020:
+            category_path = category_path + "2010-2019/"
             if int_year < 2015:
                 category_path = category_path + "2010-2014/" + str(year)
             else:
                 category_path = category_path + "2015-2019/" + str(year)
+        elif int_year < 2030:
+            category_path = category_path + "2010-2019/"
+            if int_year < 2025:
+                category_path = category_path + "2020-2024/" + str(year)
+            else:
+                category_path = category_path + "2025-2029/" + str(year)
+        elif int_year < 2040:
+            category_path = category_path + "2010-2019/"
+            if int_year < 2035:
+                category_path = category_path + "2030-2034/" + str(year)
+            else:
+                category_path = category_path + "2035-2039/" + str(year)
         else:
             category_path = ""
             if v >= 1:
@@ -363,8 +400,12 @@ def year_categories(year, decade, v=1):
 
     # take care of decade
     elif decade != "":
+        if "1920" in decade:
+            category_paths.append("Archival/1920-1929-Decade")
+        if "1930" in decade:
+            category_paths.append("Archival/1930-1939-Decade")
         if "1940" in decade:
-            category_paths.append("Archival/1949-Under")
+            category_paths.append("Archival/1940-1949/Decade")
         if "1950" in decade:
             category_paths.append("Archival/1950-1959/Decade")
         if "1960" in decade:
@@ -379,6 +420,10 @@ def year_categories(year, decade, v=1):
             category_paths.append("Archival/2000-2009/Decade")
         if "2010" in decade:
             category_paths.append("Archival/2010-2019/Decade")
+        if "2020" in decade:
+            category_paths.append("Archival/2020-2029/Decade")
+        if "2030" in decade:
+            category_paths.append("Archival/2030-2039/Decade")
     else:
         if v >= 2:
             print("No decade defined for this asset")
@@ -740,7 +785,7 @@ def post_download(job, rough_screener_path, v=1):
             print(media_info)
         #  no trimmping supported. we take the whole file
         trim = [retrosupport.process.to_trim.false]
-        print trim
+
         new_location = retrosupport.media.ffmpeg(job['location'], destination, media_info,
                                                  retrosupport.process.resolution_type.same,
                                                  trim, v, retrosupport.process.formats.prores_lt)
@@ -1022,38 +1067,58 @@ def main():
         # log
         if verbosity >= 3:
             message = "\nAsset: " + job['asset_number'] + "\n\t"
-            f.write(message)
+            f.write(str(message))
             if try_download:
-                f.write("Passed Download Test")
+                f.write(str("Passed Download Test"))
             else:
-                f.write("Failed Download Test")
+                f.write(str("Failed Download Test"))
         if try_download:  # check to see if a link exists
             download = download_video(job, location, verbosity)  # download the video store result
 
             #  log
             if verbosity >= 3:
-                print ("\ndownload result from download_video function:")
-                print (download)
+                message = "download result from download_video function: " + str(download)
+                f.write(str(message))
 
             if download == 0:  # download failed
                 job['downloaded'] = False
                 processed_jobs.append(job)
             else:  # Double Check make sure file is there
-                if os.path.isfile(download):    # Success! store the results
-                    job['downloaded'] = True
-                    job['location'] = download  # download is the path to the file returned from download_video
-                    # get the real file name with the extension and save it
-                    head, tail = os.path.split(download)
-                    job['file_name_ext'] = tail
-                    job = post_download(job, screeners, verbosity)
+
+                try:
+                    if os.path.isfile(str(download)):    # Success! store the results
+                        job['downloaded'] = True
+                        job['location'] = download  # download is the path to the file returned from download_video
+                        # get the real file name with the extension and save it
+                        head, tail = os.path.split(download)
+                        job['file_name_ext'] = tail
+                        job = post_download(job, screeners, verbosity)
+                        processed_jobs.append(job)
+                    else:
+                        job['downloaded'] = False   # files doesn't exists so no download
+                        processed_jobs.append(job)
+                except TypeError:
+                    job['downloaded'] = False  # files doesn't exists so no download
                     processed_jobs.append(job)
-                else:
-                    job['downloaded'] = False   # files doesn't exists so no download
-                    processed_jobs.append(job)
+                    #  log
+                    message = "Strange result from youtube dl. Maybe partial file download for asset: " \
+                              + job['asset_number']
+                    f.write(str(message))
+                    if verbosity >= 1:
+                        message = job['file_name'] + " Will be added to future import xml"
+                        print(str(message))
+                        #  log
+                        if verbosity >= 3:
+                            f.write(str(message))
         else:
             job['downloaded'] = False  # No link so mark as failed download
             processed_jobs.append(job)
-            print (job['file_name'] + " Will be added to future import xml")
+            if verbosity >= 1:
+                message = job['file_name'] + " Will be added to future import xml"
+                print(str(message))
+                #  log
+                if verbosity >= 3:
+                    f.write(str(message))
 
     excel(processed_jobs, csv_path, errors, verbosity)
 
@@ -1092,7 +1157,6 @@ def main():
                              downloaded_job_xml_list, location)
 
     # Get xml ready for files we will have in the future
-    print "oVER HERERE"
     print len(future_import_jobs)
     if len(future_import_jobs) > 0:     # make sure we have items in the list
 
@@ -1114,10 +1178,11 @@ def main():
         generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
                              future_job_xml_list, location)
 
-    tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
-    message = "Closing log " + tstamp
-    f.write(message)
-    f.close()
+    if verbosity >= 3:
+        tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
+        message = "Closing log " + tstamp
+        f.write(str(message))
+        f.close()
     exit()
 
 if __name__ == "__main__":
