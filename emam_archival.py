@@ -17,12 +17,12 @@ from retrosupport import process
 from retrosupport import media
 from retrosupport import locate
 from retrosupport.process import volume_result
-from retrosupport.process import  emam_metadata_format
+from retrosupport.process import emam_metadata_format
 from retrosupport.process import SideCarType
 from retrosupport.retro_dl import retro_youtube_dl
 from retrosupport.emamsidecar import generate_sidecar_xml
 
-# for unicode type issues
+# for unicode type issues when reading the csv file
 reload(sys)
 sys.setdefaultencoding('utf8')
 
@@ -71,7 +71,7 @@ def set_argparse():
 
 
 def clean_latin1(data):
-    LATIN_1_CHARS = (
+    latin_1_chars = (
         ('\xe2\x80\x99', "'"),
         ('\xc3\xa9', 'e'),
         ('\xe2\x80\x90', '-'),
@@ -102,7 +102,7 @@ def clean_latin1(data):
     )
 
     data = data.decode('iso-8859-1')
-    for _hex, _char in LATIN_1_CHARS:
+    for _hex, _char in latin_1_chars:
         data = data.replace(_hex, _char)
     return data.encode('utf8')
 
@@ -164,35 +164,35 @@ def check_args(args):
 
 
 # Turn the spelled month into the number
-def month_text_to_number(string):
-    if string.lower() in ("jan", "january"):
-        string = "01"
-    elif string.lower() in ("feb", "february"):
-        string = "02"
-    elif string.lower() in ("mar", "march"):
-        string = "03"
-    elif string.lower() in ("apr", "april"):
-        string = "04"
-    elif string.lower() == "may":
-        string = "05"
-    elif string.lower() in ("jun", "june"):
-        string = "06"
-    elif string.lower() in ("jul", "july"):
-        string = "07"
-    elif string.lower() in ("aug", "august"):
-        string = "08"
-    elif string.lower() in ("sep", "september"):
-        string = "09"
-    elif string.lower() in ("oct", "october"):
-        string = "10"
-    elif string.lower() in ("nov", "november"):
-        string = "11"
-    elif string.lower() in ("dec", "december"):
-        string = "12"
+def month_text_to_number(stringy):
+    if stringy.lower() in ("jan", "january"):
+        stringy = "01"
+    elif stringy.lower() in ("feb", "february"):
+        stringy = "02"
+    elif stringy.lower() in ("mar", "march"):
+        stringy = "03"
+    elif stringy.lower() in ("apr", "april"):
+        stringy = "04"
+    elif stringy.lower() == "may":
+        stringy = "05"
+    elif stringy.lower() in ("jun", "june"):
+        stringy = "06"
+    elif stringy.lower() in ("jul", "july"):
+        stringy = "07"
+    elif stringy.lower() in ("aug", "august"):
+        stringy = "08"
+    elif stringy.lower() in ("sep", "september"):
+        stringy = "09"
+    elif stringy.lower() in ("oct", "october"):
+        stringy = "10"
+    elif stringy.lower() in ("nov", "november"):
+        stringy = "11"
+    elif stringy.lower() in ("dec", "december"):
+        stringy = "12"
     else:  # text not standard month. Make it unknown
-        string = "11"
+        stringy = "11"
 
-    return string
+    return stringy
 
 
 # parse the expected date format from google sheets YYYY MMM DD
@@ -243,15 +243,15 @@ def parse_date(stringy, v=1):
 
 
 # replace spaces with '_' and '/' with '-' and take out quotes
-def format_string(string):
-    return_string = string.replace(" ", "_")
+def format_string(stringy):
+    return_string = stringy.replace(" ", "_")
     return_string = return_string.replace("/", "-")
     return_string = return_string.replace('"', "")
     return_string = return_string.replace("'", "")
     return_string = return_string.replace(';', "")
     return_string = return_string.replace(",", "")
     return_string = return_string.replace(":", "")
-    #remove special characters
+    #  remove special characters
     return_string = cleanspecialcharacters(return_string)
 
     return return_string
@@ -279,6 +279,8 @@ def pad_asset(asset, v=1):
 
     return return_asset
 
+
+#  Formats time code string for eMAM compatibility
 def subtime(timecode, v=1):
 
     if v >= 3:
@@ -431,7 +433,7 @@ def year_categories(year, decade, v=1):
 
 
 # Put the meta data in a dictionary from the csv
-def create_metadata(job, project_id, keywords, tracker_version, v=1):
+def set_metadata(job, project_id, keywords, tracker_version, v=1):
 
     # pad asset number
     asset_number = pad_asset(job[0], v)
@@ -478,7 +480,7 @@ def create_metadata(job, project_id, keywords, tracker_version, v=1):
                     'location': "", 'project_id': project_id, 'formated_asset_number': asset_number,
                     'downloaded': False, 'screener': False, 'file_name': file_name, 'date': dictdate,
                     'file_name_ext': "", 'keywords': keywords, 'year_categories_list': year_categories_list,
-                    'encoded': False}
+                    'encoded': False, 'error': ""}
         return metadata
     elif tracker_version == "":
         print("Error: No tracker version present. Please check google sheet java script")
@@ -614,16 +616,20 @@ def excel(jobs, csv_path, errors, v=1):
             worksheet.write(row, 2, job['file_name'], file_name_success_format)
             worksheet.write(row, 4, 'YES', download_success_format)
             worksheet.write(row, 6, job['screener'], file_name_success_format)
-            if job['encoded'] == True:
+            if job['encoded'] is True:
                 worksheet.write(row, 8, 'Yes', download_fail_format)
             else:
                 worksheet.write(row, 8, 'No', download_success_format)
+            if job['error'] != "":
+                worksheet.write(row, 10, job['error'], download_fail_format)
         else:
             worksheet.write(row, 0, job['asset_number'], asset_fail_format)
             worksheet.write(row, 2, job['file_name'], file_name_fail_format)
             worksheet.write(row, 4, 'NO!', download_fail_format)
             worksheet.write(row, 6, job['screener'], asset_fail_format)
             worksheet.write(row, 8, 'No', download_success_format)
+            if job['error'] != "":
+                worksheet.write(row, 10, job['error'], download_fail_format)
 
         row = row + 1
     row = row + 1
@@ -638,7 +644,6 @@ def excel(jobs, csv_path, errors, v=1):
             worksheet.write(row, 10, '', download_fail_format)
             worksheet.write(row, 2, error, file_name_fail_format)
             row = row + 1
-
 
     workbook.close()
 
@@ -808,6 +813,7 @@ def find_xml(args):
         return "xml_ingest3"
 
 
+#  Determines wether or not the script should attempt to download the asset
 def download_check(meta_list, force_skip):
 
     if force_skip:
@@ -815,7 +821,7 @@ def download_check(meta_list, force_skip):
     if meta_list['link'] == "":  # no link so return false
         return False
 
-    answer = True   # what to return
+    answer = True   # Seed our answer
     web_url = ["archive.org"]
     for url in web_url:
         if url in meta_list['link']:
@@ -878,17 +884,17 @@ def main():
         index = csv_path.rfind("/") + 1
         log_path = csv_path[:index] + "emam_log_" + tstamp + "_.txt"
         print("Verbsity set to 3 or greater. Generating log file at: " + log_path)
-        f = open(log_path, 'w+')
+        f = open(log_path, str('w+'))
         f.write(str("log opened " + tstamp))
-        f.write("\n\nUser Input:\n")
+        f.write(str("\n\nUser Input:\n"))
         f.write(str(args))
-        f.write("\nEnd user input\n\n")
-        f.write("Checking automated required arguments:\n")
+        f.write(str("\nEnd user input\n\n"))
+        f.write(str("Checking automated required arguments:\n"))
 
-    # Multithreading not supported yet. Warn user if enabled
+    # Multi threading not supported yet. Warn user if enabled
     if args.multi_thread:
-        if verbosity >=1:
-            print ("You enabled Multithreading. At this point it is not supported but hopefully soon")
+        if verbosity >= 1:
+            print ("You enabled Multi threading. At this point it is not supported but hopefully soon")
             print ("The -m flag will be ignored\n")
 
     # put all our jobs from the csv file into an array
@@ -904,24 +910,24 @@ def main():
         if verbosity >= 2:
             print ("Using google sheet provided project id: " + project_id)
             if verbosity >= 3:
-                f.write("Using Google Sheet provided Project ID: ")
+                f.write(str("Using Google Sheet provided Project ID: "))
                 f.write(str(project_id))
-                f.write("\n")
+                f.write(str("\n"))
     else:
         project_id = args.project_id
         if verbosity >= 2:
             print ("Using user provided provided project id: " + project_id)
             if verbosity >= 3:
-                f.write("Using User provided project ID: ")
+                f.write(str("Using User provided project ID: "))
                 f.write(str(project_id))
-                f.write("\n")
+                f.write(str("\n"))
 
     if project_id == "$$ProjectID":
         if verbosity >= 1:
             print ("The Google Sheet JavaScript did not provide a project ID")
             print ("Specify your own project ID with the -r flag. Downloader will not continue")
             if verbosity >= 3:
-                f.write("Google Sheet failed to provide project ID. Progam will Exit")
+                f.write(str("Google Sheet failed to provide project ID. Program will Exit"))
                 f.close()
         exit()
 
@@ -932,16 +938,16 @@ def main():
             message = "Category path is: " + category
             print (message)
             if verbosity >= 3:
-                f.write("Google sheet provided ")
+                f.write(str("Google sheet provided "))
                 f.write(str(message))
-                f.write("\n")
+                f.write(str("\n"))
     else:
         if verbosity >= 1:
             print ("No category defined\n Will not go on")
             print ("You must define a category")
             if verbosity >= 3:
-                f.write("Google Sheet failed to provide the category path\n")
-                f.write("program will exit")
+                f.write(str("Google Sheet failed to provide the category path\n"))
+                f.write(str("program will exit"))
                 f.close()
         exit()
 
@@ -954,19 +960,19 @@ def main():
             print ("Keywords are: " + key_words)
 
         if verbosity >= 3:
-            f.write("Google sheet provided Keywords: ")
+            f.write(str("Google sheet provided Keywords: "))
             f.write(key_words)
-            f.write("\n")
+            f.write(str("\n"))
     else:
         if verbosity >= 2:
             message = "No Keywords provided by Google Sheet"
             print (message)
-        if verbosity >= 3:
-            f.write(str(message))
-            f.write("\n")
+            if verbosity >= 3:
+                f.write(str(message))
+                f.write(str("\n"))
 
-    if verbosity >=3:
-        f.write("End check of automated arguments\n\n")
+    if verbosity >= 3:
+        f.write(str("End check of automated arguments\n\n"))
 
     # copy the rest of the list, everything except first element
     after_first_item = False
@@ -990,7 +996,7 @@ def main():
 
     # Loop through the list and format each job
     if verbosity >= 3:
-        f.write("Begin looping through job list:\nNote date won't display correct in log\n\n")
+        f.write(str("Begin looping through job list:\nNote date won't display correct in log\n\n"))
 
     csv_count = 2   # keep track of what line we are on for error reporting. Start at two because 1st line skipped
     for item in csv_first_pass:
@@ -998,7 +1004,6 @@ def main():
         #  Catch Errors. Important so we don't put bad data into emam
         if len(item) < 20:  # error catch not enough elements
             # all jobs should hav at least 20 elements
-            message_assest = ""
             if str(item[0]) != "":
                 message_assest = str(item[0])
             else:
@@ -1007,35 +1012,35 @@ def main():
             errors.append(message)
             if verbosity >= 2:
                 print ("Job has too few items:\n" + str(item))
-            if verbosity >=3:
-                f.write("Asset has too few elements. Skipping: ")
+            if verbosity >= 3:
+                f.write(str("Asset has too few elements. Skipping: "))
                 f.write(str(item))
-                f.write("\n")
+                f.write(str("\n"))
         elif not item[0].isdigit():  # No asset number
             #  log
-            if verbosity >=3:
-                f.write("Asset is missing its asset #. Skipping: ")
+            if verbosity >= 3:
+                f.write(str("Asset is missing its asset #. Skipping: "))
                 f.write(str(item))
-                f.write("\n")
+                f.write(str("\n"))
             message = "Line in CSV File Missing asset number at csv line: " + str(csv_count)
             errors.append(message)
         else:
             # put all our meta data in a nice dictionary
-            metadata = create_metadata(item, project_id, key_words, tracker_version, verbosity)
+            metadata = set_metadata(item, project_id, key_words, tracker_version, verbosity)
             jobs.append(metadata)
 
             # log
             if verbosity >= 3:
                 message = "Asset #: " + item[0] + "\n"
-                f.write(message)
+                f.write(str(message))
                 for k, v in metadata.items():
-                    f.write("\t")
+                    f.write(str("\t"))
                     if hasattr(v, '__iter__'):
-                        f.write(k)
+                        f.write(str(k))
                     else:
                         line = k + " : " + str(v) + '\n'
-                        f.write(line)
-                f.write("\n")
+                        f.write(str(line))
+                f.write(str("\n"))
 
             if item[5] != "":  # Count the number of lines with links
                 links = links + 1
@@ -1047,8 +1052,8 @@ def main():
 
         #  log
         if verbosity >= 3:
-            f.write(message)
-            f.write("\n")
+            f.write(str(message))
+            f.write(str("\n"))
 
         for job in jobs:
             if job['link'] != "":
@@ -1087,7 +1092,6 @@ def main():
 
                 try:
                     if os.path.isfile(str(download)):    # Success! store the results
-                        job['downloaded'] = True
                         job['location'] = download  # download is the path to the file returned from download_video
                         # get the real file name with the extension and save it
                         head, tail = os.path.split(download)
@@ -1099,6 +1103,7 @@ def main():
                         processed_jobs.append(job)
                 except TypeError:
                     job['downloaded'] = False  # files doesn't exists so no download
+                    job['error'] = "ck file"
                     processed_jobs.append(job)
                     #  log
                     message = "Strange result from youtube dl. Maybe partial file download for asset: " \
@@ -1144,7 +1149,7 @@ def main():
                     else:
                         line = k + " : " + str(v) + '\n'
                         f.write(line)
-                f.write("\n")
+                f.write(str("\n"))
 
         # Get the xml ready for files that we have now
         downloaded_job_xml_list = emam_metadata_format(downloaded_jobs, category, SideCarType.tracker, xml_path)
@@ -1157,7 +1162,7 @@ def main():
                              downloaded_job_xml_list, location)
 
     # Get xml ready for files we will have in the future
-    print len(future_import_jobs)
+    print (len(future_import_jobs))
     if len(future_import_jobs) > 0:     # make sure we have items in the list
 
         # need to add a generic file extension since files weren't downloaded
