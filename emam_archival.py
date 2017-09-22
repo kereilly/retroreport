@@ -27,7 +27,7 @@ sys.setdefaultencoding('utf8')
 def set_argparse():
     # Start things off using pythons argparse. get user input and give help information
     parser = argparse.ArgumentParser(
-        description="Tracker Batch eMAM Downloader Version .1",
+        description="Tracker Batch eMAM Downloader Version 1.0",
         epilog="Please do not feed the Media Manager"
     )
 
@@ -123,18 +123,77 @@ def check_args(args):
         exit()  # Cuz we have nowhere to put anything
 
 
-#  Formats time code string for eMAM compatibility
-def subtime(timecode, v=1):
+#  Check and see if a valid time code was entered in the tracker
+def subtime_valid(subtime_in, subtime_out, v=1):
+    subtime_in = subtime_in.replace(':', '')
+    subtime_out = subtime_out.replace(':', '')
 
-    if v >= 3:
-        print ("inside subtime fuction")
-    if timecode != "":
+    if subtime_in == "" or subtime_out == "":
+        if v >= 2:
+            print ("subclip time set blank")
+        return False
+    if subtime_in.isdigit() and subtime_out.isdigit():
+        time_in = int(subtime_in)
+        time_out = int(subtime_out)
+
+        # check to see if out point comes before in
+        if time_in > time_out:
+            if v >= 2:
+                print ("Time out starts before time in")
+            return False
+        else:
+            if v >= 2:
+                print ("subclip time is in correct format")
+            return True
+    else:
+        if v >= 2:
+            print ("subclip time is in incorrect format")
+        return False
+
+
+#  Pad the time code for sublclips
+def pad_timecode(time_code):
+    if time_code != "":
         # no hour placement, pad with 0's
-        if timecode[0] == ":":
-            timecode = "00" + timecode
+        if time_code[0] == ":":
+            time_code = "00" + time_code
 
-        timecode = timecode + ":00"  # add frames
-    return timecode
+    time_code = time_code + ":00"  # add frames
+    return time_code
+
+
+#  Formats time code string for eMAM compatibility
+def subclip(job, f, v=1):
+
+    if subtime_valid(job['first_in'], job['first_out'], v):
+
+        if job['first_label'] == "":  # Make a label if one doesn't exist
+            job['first_label'] = "Subclip 1"
+        # Pad our timecodes
+        job['first_in'] = pad_timecode(job['first_in'])
+        job['first_out'] = pad_timecode(job['first_out'])
+    else:
+        if v >= 1:
+            print("Clearing first set of sublclip feilds")
+        job['first_in'] = ""
+        job['first_out'] = ""
+        job['first_label'] = ""
+
+    if subtime_valid(job['second_in'], job['second_out'], v):
+
+        if job['second_label'] == "":  # Make a label if one doesn't exist
+            job['second_label'] = "Subclip 2"
+        # Pad our timecodes
+        job['second_in'] = pad_timecode(job['second_in'])
+        job['second_out'] = pad_timecode(job['second_out'])
+    else:
+        if v >= 1:
+            print("Clearing second set of sublclip feilds")
+        job['second_in'] = ""
+        job['second_out'] = ""
+        job['second_label'] = ""
+
+    return job
 
 
 # make sure the archival goes into the right master archival category based on date
@@ -316,9 +375,9 @@ def set_metadata(job, project_id, keywords, tracker_version, v=1):
         metadata = {'asset_number': job[0], 'source': job[1], 'copy_holder': job[2], 'copyright_status': job[3],
                     'source_id': job[4], 'decade': job[6], 'description': job[7],
                     'details': retrosupport.process.clean_special_characters(job[8]), 'link': job[9],
-                    'master_status': job[10], 'alerts': job[11], 'first_in': subtime(job[12]),
-                    'first_out': subtime(job[13]), 'first_label': job[14], 'second_in': subtime(job[15]),
-                    'second_out': subtime(job[16]), 'second_label': job[17],
+                    'master_status': job[10], 'alerts': job[11], 'first_in': job[12],
+                    'first_out': job[13], 'first_label': job[14], 'second_in': job[15],
+                    'second_out': job[16], 'second_label': job[17],
                     # all items that don't come from the csv file
                     'location': "", 'project_id': project_id, 'formated_asset_number': asset_number,
                     'downloaded': False, 'screener': False, 'file_name': file_name, 'date': dictdate,
@@ -927,6 +986,8 @@ def main():
             f.write(str(message))
     # download the videos in a loop
     for job in jobs:
+        # clean up timecode in and outs
+        job = subclip(job, f, verbosity)
         unpack = download_check(job, force_skip, verbosity)  # boolean that will tell us to download or not and job
         try_download = unpack[0]
         job = unpack[1]
