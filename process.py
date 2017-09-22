@@ -6,7 +6,167 @@ from retrosupport.emamsidecar import Asset, FileAction, IngestAction, CustomMeta
     Marker, generate_sidecar_xml, Subclip
 
 
-# Classes that need to work accross modules
+# replace spaces with '_' and '/' with '-' and take out quotes
+# Intended to make strings safe for file names
+def filename_format(stringy):
+    return_string = stringy.replace(" ", "_")
+    return_string = return_string.replace("/", "-")
+    return_string = return_string.replace('"', "")
+    return_string = return_string.replace("'", "")
+    return_string = return_string.replace(';', "")
+    return_string = return_string.replace(",", "")
+    return_string = return_string.replace(":", "")
+    #  remove special characters
+    return_string = clean_special_characters(return_string)
+
+    return return_string
+
+
+def clean_special_characters(s):
+    s = s.decode('unicode_escape').encode('ascii', 'ignore')
+    return s
+
+
+def clean_latin1(data):
+    latin_1_chars = (
+        ('\xe2\x80\x99', "'"),
+        ('\xc3\xa9', 'e'),
+        ('\xe2\x80\x90', '-'),
+        ('\xe2\x80\x91', '-'),
+        ('\xe2\x80\x92', '-'),
+        ('\xe2\x80\x93', '-'),
+        ('\xe2\x80\x94', '-'),
+        ('\xe2\x80\x94', '-'),
+        ('\xe2\x80\x98', "'"),
+        ('\xe2\x80\x9b', "'"),
+        ('\xe2\x80\x9c', '"'),
+        ('\xe2\x80\x9c', '"'),
+        ('\\xe2\\x80\\x9d', '"'),
+        ('\xe2\x80\x9e', '"'),
+        ('\xe2\x80\x9f', '"'),
+        ('\xe2\x80\xa6', '...'),
+        ('\xe2\x80\xb2', "'"),
+        ('\xe2\x80\xb3', "'"),
+        ('\xe2\x80\xb4', "'"),
+        ('\xe2\x80\xb5', "'"),
+        ('\xe2\x80\xb6', "'"),
+        ('\xe2\x80\xb7', "'"),
+        ('\xe2\x81\xba', "+"),
+        ('\xe2\x81\xbb', "-"),
+        ('\xe2\x81\xbc', "="),
+        ('\xe2\x81\xbd', "("),
+        ('\xe2\x81\xbe', ")")
+    )
+
+    data = data.decode('iso-8859-1')
+    for _hex, _char in latin_1_chars:
+        data = data.replace(_hex, _char)
+    return data.encode('utf8')
+
+
+# parse the expected date format from google sheets YYYY MMM DD
+def parse_date(stringy, v=1):
+
+    # split the string into a list separated by spaces
+    elements = stringy.split()
+
+    # touble shooting
+    if v >= 3:
+        print ("\nraw string sent to parse_date:\n " + stringy)
+        print ("String broken into elements:")
+        print (elements)
+
+    months = ["dec", "december", "nov", "november", "oct", "october", "sep", "september",
+              "aug", "august", "jul", "july", "jun", "june", "may", "apr", "april",
+              "mar", "march", "feb", "february", "jan", "january"]
+
+    dictdate = {'year': "", 'month': "", 'day': ""}  # create date dictionary. seed with our "unknown date"
+
+    # go through possible date formats
+    if len(elements) == 3:  # what we should get
+        dictdate['year'] = elements[0]
+        dictdate['month'] = month_text_to_number(elements[1])
+        dictdate['day'] = elements[2]
+    elif len(elements) == 1:  # just a year maybe?
+        if len(elements[0]) == 4:
+            dictdate['year'] = elements[0]
+    elif len(elements) == 2:  # month and year?
+        for item in elements:
+            if len(item) == 4:
+                dictdate['year'] = item
+            # check for months
+            elif item in months:
+                dictdate['month'] = month_text_to_number(item)
+
+            elif item.isdigit():
+                if int(item) <= 12:  # can't b more than 12. value will be ignored if so
+                    if len(item) == 1:
+                        item = "0" + item  # month is only 1 digit pad with string
+                    dictdate['month'] = item
+
+    if v >= 3:
+        print ("Post dictdate process")
+        print (dictdate)
+
+    return dictdate
+
+
+# Turn the spelled month into the number
+def month_text_to_number(stringy):
+    if stringy.lower() in ("jan", "january"):
+        stringy = "01"
+    elif stringy.lower() in ("feb", "february"):
+        stringy = "02"
+    elif stringy.lower() in ("mar", "march"):
+        stringy = "03"
+    elif stringy.lower() in ("apr", "april"):
+        stringy = "04"
+    elif stringy.lower() == "may":
+        stringy = "05"
+    elif stringy.lower() in ("jun", "june"):
+        stringy = "06"
+    elif stringy.lower() in ("jul", "july"):
+        stringy = "07"
+    elif stringy.lower() in ("aug", "august"):
+        stringy = "08"
+    elif stringy.lower() in ("sep", "september"):
+        stringy = "09"
+    elif stringy.lower() in ("oct", "october"):
+        stringy = "10"
+    elif stringy.lower() in ("nov", "november"):
+        stringy = "11"
+    elif stringy.lower() in ("dec", "december"):
+        stringy = "12"
+    else:  # text not standard month. Make it unknown
+        stringy = "11"
+
+    return stringy
+
+
+# create our standard asset label from the number
+def pad_asset(asset, v=1):
+    if len(asset) == 1:
+        return_asset = "A00" + asset
+        if v >= 3:
+            print ("\nOriginal Asset Variable: " + asset)
+            print ("Modified Asset Variable: " + return_asset)
+    elif len(asset) == 2:
+        return_asset = "A0" + asset
+        if v >= 3:
+            print ("\nOriginal Asset Variable: " + asset)
+            print ("Modified Asset Variable: " + return_asset)
+    elif len(asset) == 3:
+        return_asset = "A" + asset
+        if v >= 3:
+            print ("\nOriginal Asset Variable: " + asset)
+            print ("Modified Asset Variable: " + return_asset)
+    else:
+        return_asset = "A"
+
+    return return_asset
+
+
+# Classes that need to work across modules
 class volume_result(object):
     not_found = 0
     found = 1
@@ -15,9 +175,12 @@ class volume_result(object):
     def __init__(self, archival_location):
         self.archival_location = archival_location
 
+
 class user_syntax(object):
     invalid = 0
     valid = 1
+
+
 class download_result(object):
     download_failed = 0
     download_success = 1
@@ -25,12 +188,14 @@ class download_result(object):
     file_not_found = 3
     multiple_file_found = 4
 
+
 class resolution_type(object):
     ntsc = 2
     pal = 3
     hd_low = 4
     hd_high = 5
     same = 6
+
 
 class formats(object):
     prores_proxy = 2
@@ -41,6 +206,7 @@ class formats(object):
     copy = 7
     imx50 = 8
     xdcam422 = 9
+
 
 class frame_rates(object):
     f23_94 = 23.94
@@ -73,6 +239,7 @@ class XmlDrive(object):
     raid4 = "/Volumes/RAID4_1"
     raid5 = "/Volumes/Raid5"
 
+
 class to_trim(object):
     false = 0
     true = 1
@@ -85,6 +252,8 @@ def open_file(path, mode="r"):
         return processed_file
     else:
         return volume_result.not_found
+
+
 
 def parse_asset_label(asset_label):
     """

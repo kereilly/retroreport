@@ -51,7 +51,7 @@ def check_args(args):
         ) and (args.batch != None or args.multi_thread != False or args.output_file != None):
         print "\nYou can not specify single download options and batch download options at the same time"
         if args.verbosity >=2:
-            print "Stupid Ass Fuck!\n"
+            print "Duh!\n"
         return selection.wrong
 
     if (args.batch != None and args.trim != None):

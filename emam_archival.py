@@ -16,11 +16,8 @@ import sys
 from retrosupport import process
 from retrosupport import media
 from retrosupport import locate
-from retrosupport.process import volume_result
-from retrosupport.process import emam_metadata_format
-from retrosupport.process import SideCarType
-from retrosupport.retro_dl import retro_youtube_dl
-from retrosupport.emamsidecar import generate_sidecar_xml
+from retrosupport import retro_dl
+from retrosupport import emamsidecar
 
 # for unicode type issues when reading the csv file
 reload(sys)
@@ -70,50 +67,13 @@ def set_argparse():
     return pack
 
 
-def clean_latin1(data):
-    latin_1_chars = (
-        ('\xe2\x80\x99', "'"),
-        ('\xc3\xa9', 'e'),
-        ('\xe2\x80\x90', '-'),
-        ('\xe2\x80\x91', '-'),
-        ('\xe2\x80\x92', '-'),
-        ('\xe2\x80\x93', '-'),
-        ('\xe2\x80\x94', '-'),
-        ('\xe2\x80\x94', '-'),
-        ('\xe2\x80\x98', "'"),
-        ('\xe2\x80\x9b', "'"),
-        ('\xe2\x80\x9c', '"'),
-        ('\xe2\x80\x9c', '"'),
-        ('\\xe2\\x80\\x9d', '"'),
-        ('\xe2\x80\x9e', '"'),
-        ('\xe2\x80\x9f', '"'),
-        ('\xe2\x80\xa6', '...'),
-        ('\xe2\x80\xb2', "'"),
-        ('\xe2\x80\xb3', "'"),
-        ('\xe2\x80\xb4', "'"),
-        ('\xe2\x80\xb5', "'"),
-        ('\xe2\x80\xb6', "'"),
-        ('\xe2\x80\xb7', "'"),
-        ('\xe2\x81\xba', "+"),
-        ('\xe2\x81\xbb', "-"),
-        ('\xe2\x81\xbc', "="),
-        ('\xe2\x81\xbd', "("),
-        ('\xe2\x81\xbe', ")")
-    )
-
-    data = data.decode('iso-8859-1')
-    for _hex, _char in latin_1_chars:
-        data = data.replace(_hex, _char)
-    return data.encode('utf8')
-
-
 def csv_process(path, verbosity=1):
     # Open the csv file to work on
     if verbosity >= 2:
         print ("Attempting to open csv file at: " + path)
     csv_file = process.open_file(path, "r")
 
-    if csv_file == volume_result.not_found:
+    if csv_file == retrosupport.process.volume_result.not_found:
         print ("No file found at: " + path)
         print ("Please find your csv file and try again")
         exit()
@@ -127,7 +87,7 @@ def csv_process(path, verbosity=1):
 
         for job in jobs_list:
             for text in job:
-                clean_latin1(text)
+                retrosupport.process.clean_latin1(text)
                 job_clean.append(text)
             jobs_list_clean.append(job_clean)
             job_clean = []
@@ -161,123 +121,6 @@ def check_args(args):
         print ("The directory you specified to save to does not exist: "
                + args.output_directory + " please specify a valid directory to save to")
         exit()  # Cuz we have nowhere to put anything
-
-
-# Turn the spelled month into the number
-def month_text_to_number(stringy):
-    if stringy.lower() in ("jan", "january"):
-        stringy = "01"
-    elif stringy.lower() in ("feb", "february"):
-        stringy = "02"
-    elif stringy.lower() in ("mar", "march"):
-        stringy = "03"
-    elif stringy.lower() in ("apr", "april"):
-        stringy = "04"
-    elif stringy.lower() == "may":
-        stringy = "05"
-    elif stringy.lower() in ("jun", "june"):
-        stringy = "06"
-    elif stringy.lower() in ("jul", "july"):
-        stringy = "07"
-    elif stringy.lower() in ("aug", "august"):
-        stringy = "08"
-    elif stringy.lower() in ("sep", "september"):
-        stringy = "09"
-    elif stringy.lower() in ("oct", "october"):
-        stringy = "10"
-    elif stringy.lower() in ("nov", "november"):
-        stringy = "11"
-    elif stringy.lower() in ("dec", "december"):
-        stringy = "12"
-    else:  # text not standard month. Make it unknown
-        stringy = "11"
-
-    return stringy
-
-
-# parse the expected date format from google sheets YYYY MMM DD
-def parse_date(stringy, v=1):
-
-    # split the string into a list separated by spaces
-    elements = stringy.split()
-
-    # touble shooting
-    if v >= 3:
-        print ("\nraw string sent to parse_date:\n " + stringy)
-        print ("String broken into elements:")
-        print (elements)
-
-    months = ["dec", "december", "nov", "november", "oct", "october", "sep", "september",
-              "aug", "august", "jul", "july", "jun", "june", "may", "apr", "april",
-              "mar", "march", "feb", "february", "jan", "january"]
-
-    dictdate = {'year': "", 'month': "", 'day': ""}  # create date dictionary. seed with our "unknown date"
-
-    # go through possible date formats
-    if len(elements) == 3:  # what we should get
-        dictdate['year'] = elements[0]
-        dictdate['month'] = month_text_to_number(elements[1])
-        dictdate['day'] = elements[2]
-    elif len(elements) == 1:  # just a year maybe?
-        if len(elements[0]) == 4:
-            dictdate['year'] = elements[0]
-    elif len(elements) == 2:  # month and year?
-        for item in elements:
-            if len(item) == 4:
-                dictdate['year'] = item
-            # check for months
-            elif item in months:
-                dictdate['month'] = month_text_to_number(item)
-
-            elif item.isdigit():
-                if int(item) <= 12:  # can't b more than 12. value will be ignored if so
-                    if len(item) == 1:
-                        item = "0" + item  # month is only 1 digit pad with string
-                    dictdate['month'] = item
-
-    if v >= 3:
-        print ("Post dictdate process")
-        print (dictdate)
-
-    return dictdate
-
-
-# replace spaces with '_' and '/' with '-' and take out quotes
-def format_string(stringy):
-    return_string = stringy.replace(" ", "_")
-    return_string = return_string.replace("/", "-")
-    return_string = return_string.replace('"', "")
-    return_string = return_string.replace("'", "")
-    return_string = return_string.replace(';', "")
-    return_string = return_string.replace(",", "")
-    return_string = return_string.replace(":", "")
-    #  remove special characters
-    return_string = cleanspecialcharacters(return_string)
-
-    return return_string
-
-
-# create our standard asset label from the number
-def pad_asset(asset, v=1):
-    if len(asset) == 1:
-        return_asset = "A00" + asset
-        if v >= 3:
-            print ("\nOriginal Asset Variable: " + asset)
-            print ("Modified Asset Variable: " + return_asset)
-    elif len(asset) == 2:
-        return_asset = "A0" + asset
-        if v >= 3:
-            print ("\nOriginal Asset Variable: " + asset)
-            print ("Modified Asset Variable: " + return_asset)
-    elif len(asset) == 3:
-        return_asset = "A" + asset
-        if v >= 3:
-            print ("\nOriginal Asset Variable: " + asset)
-            print ("Modified Asset Variable: " + return_asset)
-    else:
-        return_asset = "A"
-
-    return return_asset
 
 
 #  Formats time code string for eMAM compatibility
@@ -436,10 +279,10 @@ def year_categories(year, decade, v=1):
 def set_metadata(job, project_id, keywords, tracker_version, v=1):
 
     # pad asset number
-    asset_number = pad_asset(job[0], v)
+    asset_number = retrosupport.process.pad_asset(job[0], v)
     # parse date field
     textdate = job[5]
-    dictdate = parse_date(textdate)
+    dictdate = retrosupport.process.parse_date(textdate)
     # find our year categories
     if dictdate['year'] != "" or job[6] != "":
         year_categories_list = year_categories(dictdate['year'], job[6])
@@ -457,10 +300,10 @@ def set_metadata(job, project_id, keywords, tracker_version, v=1):
         file_name = file_name + "_" + dictdate['month']
     if dictdate['day'] != "":
         file_name = file_name + "_" + dictdate['day']
-    field = format_string(job[1])   # Source
+    field = retrosupport.process.filename_format(job[1])   # Source
     if field != "":
         file_name = file_name + "_" + field
-    field = format_string(job[4])   # Source ID
+    field = retrosupport.process.filename_format(job[4])   # Source ID
     if field != "":
         file_name = file_name + "_" + field
 
@@ -472,7 +315,7 @@ def set_metadata(job, project_id, keywords, tracker_version, v=1):
     if tracker_version == "1.0":
         metadata = {'asset_number': job[0], 'source': job[1], 'copy_holder': job[2], 'copyright_status': job[3],
                     'source_id': job[4], 'decade': job[6], 'description': job[7],
-                    'details': cleanspecialcharacters(job[8]), 'link': job[9],
+                    'details': retrosupport.process.clean_special_characters(job[8]), 'link': job[9],
                     'master_status': job[10], 'alerts': job[11], 'first_in': subtime(job[12]),
                     'first_out': subtime(job[13]), 'first_label': job[14], 'second_in': subtime(job[15]),
                     'second_out': subtime(job[16]), 'second_label': job[17],
@@ -499,7 +342,7 @@ def download_video(job, download_location, verbosity=1, ):
         print ("\nWorking on: " + job['project_id'] + "_" + job['formated_asset_number'])
 
     # Download file and store results
-    result = retro_youtube_dl(job['link'], download_location, job['file_name'], verbosity)
+    result = retrosupport.retro_dl.retro_youtube_dl(job['link'], download_location, job['file_name'], verbosity)
 
     # Return results
     return result
@@ -626,7 +469,7 @@ def excel(jobs, csv_path, errors, v=1):
             worksheet.write(row, 0, job['asset_number'], asset_fail_format)
             worksheet.write(row, 2, job['file_name'], file_name_fail_format)
             worksheet.write(row, 4, 'NO!', download_fail_format)
-            worksheet.write(row, 6, job['screener'], asset_fail_format)
+            worksheet.write(row, 6, job['screener'], asset_success_format)
             worksheet.write(row, 8, 'No', download_success_format)
             if job['error'] != "":
                 worksheet.write(row, 10, job['error'], download_fail_format)
@@ -670,7 +513,7 @@ def check_screeners(args, v=1):
                         print ("Reverting to default 'Google Drive' location if available")
         locations = retrosupport.locate.google_drive(v)
         # check and see if we found the google drive
-        if locations[0] == volume_result.not_found:
+        if locations[0] == retrosupport.process.volume_result.not_found:
             if v >= 1:
                 print ("No screener will be made Cannot find the Google Drive story path")
                 print ("Check to see if Google Drive is mounted")
@@ -704,7 +547,7 @@ def google_drive_screener(job, path, v=1):
     screener_path = retrosupport.locate.find_google_drive_archival(
         path[:21], path, project_id, v)
 
-    if screener_path == volume_result.not_found:
+    if screener_path == retrosupport.process.volume_result.not_found:
         # we couldn't find the screener location in the Google Drive
         if v >= 1:
             print ("Could not find story folder in google drive for: " + job['file_name'])
@@ -781,14 +624,14 @@ def post_download(job, rough_screener_path, v=1):
             encode = True
 
     if encode:
-        #  we had a hit with our extention match
-        #  strip old extention out of file.
+        #  we had a hit with our extension match
+        #  strip old extension out of file.
         index = job['location'].rfind(".") + 1
         destination = job['location'][:index] + "mov"
         media_info = retrosupport.media.getinfo(job['location'])
         if v >= 3:
             print(media_info)
-        #  no trimmping supported. we take the whole file
+        #  no trimming supported. we take the whole file
         trim = [retrosupport.process.to_trim.false]
 
         new_location = retrosupport.media.ffmpeg(job['location'], destination, media_info,
@@ -813,26 +656,38 @@ def find_xml(args):
         return "xml_ingest3"
 
 
-#  Determines wether or not the script should attempt to download the asset
-def download_check(meta_list, force_skip):
+#  Determines weather or not the script should attempt to download the asset
+def download_check(job, force_skip, v=1):
+    answer = True  # Seed our answer
+    message = ""
 
-    if force_skip:
-        return False    # user has selected to download the videos later
-    if meta_list['link'] == "":  # no link so return false
-        return False
+    # No source file. Can not process file
+    if job['source'] == "":
+        job['error'] = "No Source"
+        answer = False
+        message = "Asset has no source. Not adding to xml. Error reported.\nPlease check tracker or csv file"
+        if v >= 1:
+            print (message)
+    # User elected to put all assets in future xml
+    elif force_skip:
+        answer = False    # user has selected to download the videos later
+        message = "Force skip on. Adding to future download list"
+    elif job['link'] == "":  # no link so return false
+        if v >= 1:
+            print ("Asset has no link. Adding to future download list")
+        answer = False
+        message = "Asset has no link. Adding to future download list"
+    else:
+        web_url = ["archive.org"]
+        for url in web_url:
+            if url in job['link']:
+                answer = False
+                message = "Non script supported website. Adding to future downloads list"
+                if v >= 1:
+                    print (message)
 
-    answer = True   # Seed our answer
-    web_url = ["archive.org"]
-    for url in web_url:
-        if url in meta_list['link']:
-            answer = False
-
-    return answer
-
-
-def cleanspecialcharacters(s):
-    s = s.decode('unicode_escape').encode('ascii', 'ignore')
-    return s
+    pack = [answer, job, message]
+    return pack
 
 
 def choose_extension(url, ext):
@@ -878,7 +733,7 @@ def main():
             extension = "." + args.extension
     force_extension = args.force_extension
 
-    # setup log file
+    # setup log file. Will only be created if verbosity is set to 3 or greater
     if verbosity >= 3:
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
         index = csv_path.rfind("/") + 1
@@ -1002,8 +857,8 @@ def main():
     for item in csv_first_pass:
 
         #  Catch Errors. Important so we don't put bad data into emam
-        if len(item) < 20:  # error catch not enough elements
-            # all jobs should hav at least 20 elements
+        if len(item) < 19:  # error catch not enough elements
+            # all jobs should hav at least 19 elements
             if str(item[0]) != "":
                 message_assest = str(item[0])
             else:
@@ -1065,65 +920,110 @@ def main():
     else:
         location = args.output_directory + "/"
 
+    message = "Begin loop through jobs. Checking download status and attempting downloads\n"
+    if verbosity >= 1:
+        print (message)
+        if verbosity >= 3:
+            f.write(str(message))
     # download the videos in a loop
     for job in jobs:
-        try_download = download_check(job, force_skip)  # boolean that will tell us to download or not
+        unpack = download_check(job, force_skip, verbosity)  # boolean that will tell us to download or not and job
+        try_download = unpack[0]
+        job = unpack[1]
+        test_message = unpack[2] + "\n"
 
         # log
         if verbosity >= 3:
             message = "\nAsset: " + job['asset_number'] + "\n\t"
             f.write(str(message))
+            f.write(str(test_message))
             if try_download:
                 f.write(str("Passed Download Test"))
             else:
                 f.write(str("Failed Download Test"))
-        if try_download:  # check to see if a link exists
-            download = download_video(job, location, verbosity)  # download the video store result
 
-            #  log
-            if verbosity >= 3:
-                message = "download result from download_video function: " + str(download)
-                f.write(str(message))
+        if job['error'] != "":  # error occured where we cannot put asset in xml for processing
+            message = "Asset: " + job['asset_number'] + " " + job['error']
+            errors.append(message)
+        else:  # its going into an xml lets see which one
+            if try_download:  # check to see if a link exists
+                download = download_video(job, location, verbosity)  # download the video store result
 
-            if download == 0:  # download failed
-                job['downloaded'] = False
-                processed_jobs.append(job)
-            else:  # Double Check make sure file is there
-
-                try:
-                    if os.path.isfile(str(download)):    # Success! store the results
-                        job['location'] = download  # download is the path to the file returned from download_video
-                        # get the real file name with the extension and save it
-                        head, tail = os.path.split(download)
-                        job['file_name_ext'] = tail
-                        job = post_download(job, screeners, verbosity)
-                        processed_jobs.append(job)
-                    else:
-                        job['downloaded'] = False   # files doesn't exists so no download
-                        processed_jobs.append(job)
-                except TypeError:
-                    job['downloaded'] = False  # files doesn't exists so no download
-                    job['error'] = "ck file"
-                    processed_jobs.append(job)
-                    #  log
-                    message = "Strange result from youtube dl. Maybe partial file download for asset: " \
-                              + job['asset_number']
-                    f.write(str(message))
-                    if verbosity >= 1:
-                        message = job['file_name'] + " Will be added to future import xml"
-                        print(str(message))
-                        #  log
-                        if verbosity >= 3:
-                            f.write(str(message))
-        else:
-            job['downloaded'] = False  # No link so mark as failed download
-            processed_jobs.append(job)
-            if verbosity >= 1:
-                message = job['file_name'] + " Will be added to future import xml"
-                print(str(message))
                 #  log
                 if verbosity >= 3:
+                    message = "download result from download_video function: " + str(download)
                     f.write(str(message))
+
+                if download == 0:  # download failed
+                    job['downloaded'] = False
+                    processed_jobs.append(job)
+                else:  # Double Check make sure file is there
+
+                    try:
+                        if os.path.isfile(str(download)):    # Success? two more tests
+                            # check for funky file extensions
+                            path, file_name = os.path.split(str(download))
+                            index = file_name.rfind(".") + 1
+                            extension = file_name[index:]
+                            bad_extensions = ['html']
+                            if extension in bad_extensions:
+                                message = "\nAppears the file downloaded was bogus. html"
+                                if verbosity >= 1:
+                                    print (message)
+                                    if verbosity >= 3:
+                                        f.write(str(message))
+                                job['downloaded'] = False
+                                job['error'] = "html file"
+                                processed_jobs.append(job)
+                                # remove bogus file
+                                os.remove(str(download))
+                                # check for file too small
+                            elif os.path.getsize(str(download)) < 2000000:
+                                message = "\nThe file downloaded is too small"
+                                if verbosity >= 1:
+                                    print (message)
+                                    if verbosity >= 3:
+                                        size = os.path.getsize(str(download)) / 1000000
+                                        message = message + "\nFile size = " + str(size) + "MB\n"
+                                        f.write(str(message))
+                                job['downloaded'] = False
+                                job['error'] = "Size"
+                                processed_jobs.append(job)
+                                # remove bogus file
+                                os.remove(str(download))
+                            else:
+                                job['location'] = download  # path to the file returned from download_video
+                                # get the real file name with the extension and save it
+                                job['downloaded'] = True
+                                job['file_name_ext'] = file_name
+                                job = post_download(job, screeners, verbosity)
+                                processed_jobs.append(job)
+                        else:
+                            job['downloaded'] = False   # files doesn't exists so no download
+                            processed_jobs.append(job)
+                    except TypeError:
+                        job['downloaded'] = False  # files doesn't exists so no download
+                        job['error'] = "ck file"
+                        processed_jobs.append(job)
+                        #  log
+                        message = "Strange result from youtube dl. Maybe partial file download for asset: " \
+                                  + job['asset_number']
+                        f.write(str(message))
+                        if verbosity >= 1:
+                            message = job['file_name'] + " Will be added to future import xml"
+                            print(str(message))
+                            #  log
+                            if verbosity >= 3:
+                                f.write(str(message))
+            else:
+                job['downloaded'] = False  # No link so mark as failed download
+                processed_jobs.append(job)
+                if verbosity >= 1:
+                    message = job['file_name'] + " Will be added to future import xml"
+                    print(str(message))
+                    #  log
+                    if verbosity >= 3:
+                        f.write(str(message))
 
     excel(processed_jobs, csv_path, errors, verbosity)
 
@@ -1152,17 +1052,18 @@ def main():
                 f.write(str("\n"))
 
         # Get the xml ready for files that we have now
-        downloaded_job_xml_list = emam_metadata_format(downloaded_jobs, category, SideCarType.tracker, xml_path)
+        downloaded_job_xml_list = retrosupport.process.emam_metadata_format(downloaded_jobs, category,
+                                                                retrosupport.process.SideCarType.tracker, xml_path)
 
         # Create our xml file
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")      # hold thr current date and time
         location = location + "sidecar_" + tstamp + ".xml"
 
-        generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
-                             downloaded_job_xml_list, location)
+        retrosupport.emamsidecar.generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d'
+                                                      , downloaded_job_xml_list, location)
 
     # Get xml ready for files we will have in the future
-    print (len(future_import_jobs))
+
     if len(future_import_jobs) > 0:     # make sure we have items in the list
 
         # need to add a generic file extension since files weren't downloaded
@@ -1174,14 +1075,15 @@ def main():
                 job['file_name_ext'] = job['file_name'] + choose_extension(job['link'], extension)
 
         # format our metadata
-        future_job_xml_list = emam_metadata_format(future_import_jobs, category, SideCarType.tracker, xml_path)
+        future_job_xml_list = retrosupport.process.emam_metadata_format(future_import_jobs, category, retrosupport.
+                                                                        process.SideCarType.tracker, xml_path)
 
         # get the location to save to, coming from input file
         index = csv_path.rfind("/") + 1
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")    # create our time stamp
         location = csv_path[:index] + "future_sidecar_" + tstamp + ".xml"
-        generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d',
-                             future_job_xml_list, location)
+        retrosupport.emamsidecar.generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d'
+                                                      , future_job_xml_list, location)
 
     if verbosity >= 3:
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
