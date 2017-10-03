@@ -163,7 +163,7 @@ def pad_timecode(time_code):
 
 
 #  Formats time code string for eMAM compatibility
-def subclip(job, f, v=1):
+def subclip(job, v=1):
 
     if subtime_valid(job['first_in'], job['first_out'], v):
 
@@ -715,6 +715,34 @@ def find_xml(args):
         return "xml_ingest3"
 
 
+def random_generator():
+    tstamp = time.strftime("%s")  # create our time stamp
+    if len(tstamp) > 9:
+        tstamp = tstamp[9]
+
+    if tstamp == "0":
+        return "The_Reckoning"
+    elif tstamp == "1":
+        return "The_Revenge"
+    elif tstamp == "2":
+        return "The_Catalyst"
+    elif tstamp == "3":
+        return "The_Reborn"
+    elif tstamp == "4":
+        return "The_Sequel"
+    elif tstamp == "5":
+        return "Cullen_Missed_His_First_Day_At_Work"
+    elif tstamp == "6":
+        return "This_Time_Its_Personal"
+    elif tstamp == "7":
+        return "The_Redemption"
+    elif tstamp == "8":
+        return "It_Goes_Up_To_Eleven"
+    elif tstamp == "9":
+        return "The_Return"
+    else:
+        return "Random_Word_Generator_Not_Working"
+
 #  Determines weather or not the script should attempt to download the asset
 def download_check(job, force_skip, v=1):
     answer = True  # Seed our answer
@@ -987,7 +1015,7 @@ def main():
     # download the videos in a loop
     for job in jobs:
         # clean up timecode in and outs
-        job = subclip(job, f, verbosity)
+        job = subclip(job, verbosity)
         unpack = download_check(job, force_skip, verbosity)  # boolean that will tell us to download or not and job
         try_download = unpack[0]
         job = unpack[1]
@@ -1118,7 +1146,11 @@ def main():
 
         # Create our xml file
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")      # hold thr current date and time
-        location = location + "sidecar_" + tstamp + ".xml"
+        if os.path.isfile(location + 'sidecar_' + tstamp + '.xml'):
+            random_word = random_generator()
+            location = location + 'sidecar_part2_' + random_word + '_' + tstamp + '.xml'
+        else:
+            location = location + "sidecar_" + tstamp + ".xml"
 
         retrosupport.emamsidecar.generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d'
                                                       , downloaded_job_xml_list, location)
@@ -1142,7 +1174,12 @@ def main():
         # get the location to save to, coming from input file
         index = csv_path.rfind("/") + 1
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")    # create our time stamp
-        location = csv_path[:index] + "future_sidecar_" + tstamp + ".xml"
+        # Check and see if cullen is running two of these jobs again
+        if os.path.isfile(csv_path[:index] + "future_sidecar_" + tstamp + ".xml"):
+            random_word = random_generator()
+            location = csv_path[:index] + "future_sidecar_part2_" + random_word + '_' + tstamp + ".xml"
+        else:
+            location = csv_path[:index] + "future_sidecar_" + tstamp + ".xml"
         retrosupport.emamsidecar.generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d'
                                                       , future_job_xml_list, location)
 
