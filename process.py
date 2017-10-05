@@ -354,8 +354,10 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
                 metadata.standard_id = 'CUST_FLD_KEYWORDS_38'
                 metadata.value = job['keywords']
                 custom_metadata.append(metadata)
+
         if asset_type == SideCarType.vandy:
             print ("Do nothing right now")
+
         #  Extract date
         dict_date = job['date']
         if dict_date['year'] != "":  # use the year as the condition if a date is present
@@ -398,7 +400,7 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
             if item != "":
                 category_list.append(item)
         if category != "":
-            category_list.append(category)
+            category_list.append(category)  # this category is from the google sheet csv file
 
         asset.categories = category_list
 

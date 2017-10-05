@@ -766,6 +766,7 @@ def download_check(job, force_skip, v=1):
         message = "Asset has no link. Adding to future download list"
     else:
         web_url = ["archive.org"]
+        #web_url = ['zzzz.zzz']
         for url in web_url:
             if url in job['link']:
                 answer = False
