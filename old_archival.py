@@ -402,13 +402,12 @@ def main():
     # set up our regular expression match
     pattern_archival = re.compile('RR[1-3]\d\d_A\d+', re.IGNORECASE)  # looks for beginning of asset label pattern
     pattern_vandy = re.compile('RR[1-3]\d\d_[1-2]\d\d\d_\d\d_[0-3]\d_[a-z][a-z][a-z]_A\d+', re.IGNORECASE)  # matches vandy pattern
-    pattern_asset_num = re.compile('_A\d{1,3}(_|.)', re.IGNORECASE)
-    pattern_date = re.compile('(_|.)[1-2]\d\d\d(.|_)[0-1]\d(.|_)[0-3]\d(.|_)')
-    pattern_year = re.compile('(.|_)[1-2]\d\d\d(.|_)')
-    pattern_year_month = re.compile('(.|_)[1-2]\d\d\d(.|_)[0-1]\d(.|_)')
-    pattern_year_month_euro = re.compile('(.|_)[0-1]\d(.|_)[1-2]\d\d\d(.|_)')
-    pattern_date_euro = re.compile('(_|.)[1-2]\d\d\d(.|_)[0-1]\d(.|_)[0-3]\d(.|_)')
-
+    pattern_asset_num = re.compile('_A\d{1,3}[_|.]', re.IGNORECASE)
+    pattern_date = re.compile('[_|.][1-2]\d\d\d[.|_][0-1]\d[.|_][0-3]\d[.|_]')
+    pattern_year = re.compile('[.|_][1-2]\d\d\d[.|_]')
+    pattern_year_month = re.compile('[.|_][1-2]\d\d\d[.|_][0-1]\d[.|_]')
+    pattern_year_month_euro = re.compile('[.|_][0-1]\d[.|_][1-2]\d\d\d[.|_]')
+    pattern_date_euro = re.compile('[_|.][1-2]\d\d\d[.|_][0-1]\d[.|_][0-3]\d[.|_]')
 
     # Create a list to dump everything into
     raw_list = []   # all files under the root and all sub directories specified by the user
@@ -624,11 +623,22 @@ def main():
                         if re_match is not None:
                             tracker_entry['field_dict_date'] = get_date(re_match.group(0))
 
-    print "\n\n"
+    #for tracker_entry in list_tracker_sheet:
+        #print "Asset: " + str(tracker_entry['asset_number']) + " - Feild date: " + str(tracker_entry['field_dict_date']) + " label Date: " + str(tracker_entry['label_dict_date'])
+
+    # now match the tracker entries with archival file list
+    print ""
     for tracker_entry in list_tracker_sheet:
-        print "Asset: " + str(tracker_entry['asset_number']) + " - Feild date: " + str(tracker_entry['field_dict_date']) + " label Date: " + str(tracker_entry['label_dict_date'])
+        match = False
+        for media_file in list_non_dup_archival_media:
+            if media_file['asset_number'] == tracker_entry['asset_number']:
+                match = True
+                print "Match: " + str(media_file['asset_number'])
+        if not match:
+            list_errors.append(tracker_entry)
 
     print "\nErrors:"
-    print list_errors
+    for error in list_errors:
+        print error
 if __name__ == "__main__":
         main()
