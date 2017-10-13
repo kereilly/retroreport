@@ -188,22 +188,72 @@ def choose_file(asset_list, v=1):
 
 
 # Turn a string frog regex searches into a date in dictionary form
-def get_date(date_string):
+def get_date(date_string, date_type):
 
-    replace = "_./"  # what characters to remove that were seperating dates.
-    for char in replace:
-        date_string = date_string.replace(char, "")
+    if date_type == "year":
+        chars = ['.', '/', '_']
+        for char in chars:
+            date_string = date_string.replace(char, "")
+        if len(date_string) == 4:
+            return {'year': date_string, 'month': "", 'day': ""}
+        else:
+            return {'year': "", 'month': "", 'day': ""}
 
-    if len(date_string) == 4:
-        date = {'year': date_string, 'month': "", 'day': ""}
-    elif len(date_string) == 6:
-        date = {'year': date_string[0:4], 'month': date_string[-2:], 'day': ""}
-    elif len(date_string) == 8:
-        date = {'year': date_string[0:4], 'month': date_string[4:6], 'day': date_string[-2:]}
-    else:
-        date = {'year': "", 'month': "", 'day': "", 'decade': ""}
+    elif date_type == "normal":
+        date_string = date_string.replace('_', '.')
+        raw_elements = date_string.split('.')
+        elements = []
+        for item in raw_elements:
+            if item != "":
+                elements.append(item)
+        if len(elements) == 3:
+            if len(elements[2]) == 1:
+                elements[2] = "0" + elements[0]
+            if len(elements[1]) == 1:
+                elements[1] = "0" + elements[1]
+            date = {'year': elements[0], 'month': elements[1], 'day': elements[2]}
+            return date
+        elif len(elements) == 2:
+            date = {'year': "", 'month': "", 'day': ""}
+            for element in elements:
+                if len(element) == 4:
+                    date['year'] = element
+                if len(element) == 2:
+                    if int(element) <= 12:
+                        date['month'] = element
+            return date
+        else:
+            print elements
+            return {'year': "", 'month': "", 'day': ""}
 
-    return date
+    elif date_type == "euro":
+
+        date_string = date_string.replace('_', '.')
+        raw_elements = date_string.split('.')
+        elements = []
+        for item in raw_elements:
+            if item != "":
+                elements.append(item)
+        if len(elements) == 3:
+            if len(elements[0]) == 1:
+                elements[0] = "0" + elements[0]
+            if len(elements[1]) == 1:
+                elements[1] = "0" + elements[1]
+            date = {'year': elements[2], 'month': elements[0], 'day': elements[1]}
+        elif len(elements) == 2:
+            date = {'year': "", 'month': "", 'day': ""}
+            for element in elements:
+                if len(element) == 4:
+                    date['year'] = element
+                if len(element) == 2:
+                    if int(element) <= 12:
+                        date['month'] = element
+            return date
+        else:
+            print elements
+            return {'year': "", 'month': "", 'day': ""}
+
+        return date
 
 
 def csv_process(path, v=1):
@@ -241,7 +291,7 @@ def csv_process(path, v=1):
 def tracker_dict(item):
 
     dicts = {'source': item[0], 'Copyright': item[1], 'asset_label': item[2], 'date': item[3], 'notes': item[4],
-             'link': item[5], 'decade': "", 'dict_date': {'year': "", 'month': "", 'day': ""},  # to store the final date
+             'link': item[5], 'decade': "", 'date_pattern': "",
              'label_dict_date': {'year': "", 'month': "", 'day': ""},  # store date from label
              'field_dict_date': {'year': "", 'month': "", 'day': ""}}  # store date from field
     return dicts
@@ -384,6 +434,56 @@ def year_categories(year, decade, v=1):
     return category_paths
 
 
+def final_date(media_file, label, field):
+
+    # set our dates. priority is date from file name then asset label, then date field in tracker
+    date = {'year': "", 'month': "", 'day': ""}
+
+    # year first
+    if media_file['year'] != "":
+        date['year'] = media_file['year']
+    elif label['year'] != "":
+        date['year'] = label['year']
+    elif field['year'] != "":
+        date['year'] = field['year']
+    # month
+    if media_file['month'] != "":
+        date['month'] = media_file['month']
+    elif label['month'] != "":
+        date['month'] = label['month']
+    elif field['month'] != "":
+        date['month'] = field['month']
+    # day
+    if media_file['day'] != "":
+        date['day'] = media_file['day']
+    elif label['day'] != "":
+        date['day'] = label['day']
+    elif field['day'] != "":
+        date['day'] = field['day']
+
+    return date
+
+
+def get_description(item):
+    description = item['asset_label']
+    description = description.replace(item['date_pattern'], "")
+    pattern_archive = re.compile('RR[1-3]\d\d_A\d{1,3}', re.IGNORECASE)
+    re_match = pattern_archive.search(description)
+    if re_match is not None:
+        description = description.replace(str(re_match.group(0)), "")
+    description = description.replace(item['source'], "")
+    if item['source'].lower() == "internet archive" or item['source'].lower() == "archive.org":
+        pattern = re.compile("IA", re.IGNORECASE)
+        description = pattern.sub("", description)
+    description = description.replace("_", " ")
+    description = description.replace(item['copyright'], "")
+    pattern = re.compile("screener", re.IGNORECASE)
+    description = pattern.sub("", description)
+    pattern = re.compile("master", re.IGNORECASE)
+    description = pattern.sub("", description)
+
+    return description
+
 
 
 def main():
@@ -397,17 +497,18 @@ def main():
     check_args(args)        # make sure user entered correct input
     v = args.verbosity
     project_id = args.project_id    # user entered project id
-    csv_path = args.input   # location of csv file contaiing metadata
+    csv_path = args.input   # location of csv file containing metadata
     directory = args.directory
     # set up our regular expression match
     pattern_archival = re.compile('RR[1-3]\d\d_A\d+', re.IGNORECASE)  # looks for beginning of asset label pattern
     pattern_vandy = re.compile('RR[1-3]\d\d_[1-2]\d\d\d_\d\d_[0-3]\d_[a-z][a-z][a-z]_A\d+', re.IGNORECASE)  # matches vandy pattern
     pattern_asset_num = re.compile('_A\d{1,3}[_|.]', re.IGNORECASE)
-    pattern_date = re.compile('[_|.][1-2]\d\d\d[.|_][0-1]\d[.|_][0-3]\d[.|_]')
+    pattern_date = re.compile('[_|.][1-2]\d\d\d[.|_]\d{1,2}[.|_][0-3]\d[.|_]')
     pattern_year = re.compile('[.|_][1-2]\d\d\d[.|_]')
     pattern_year_month = re.compile('[.|_][1-2]\d\d\d[.|_][0-1]\d[.|_]')
     pattern_year_month_euro = re.compile('[.|_][0-1]\d[.|_][1-2]\d\d\d[.|_]')
-    pattern_date_euro = re.compile('[_|.][1-2]\d\d\d[.|_][0-1]\d[.|_][0-3]\d[.|_]')
+    pattern_date_euro = re.compile('[_|.][0-1]\d[.|_][0-3]\d[.|_][1-2]\d\d\d[.|_]')
+    pattern_bad_date_euro = re.compile('[_|.]\d[.|_]\d{1,2}[.|_][1|2]\d\d\d[.|_]')
 
     # Create a list to dump everything into
     raw_list = []   # all files under the root and all sub directories specified by the user
@@ -534,26 +635,33 @@ def main():
     for media_file in list_non_dup_archival_media:
         re_match = pattern_date.search(media_file['file_name'])  # match for normal date format
         if re_match is not None:
-            media_file['dict_date'] = get_date(re_match.group(0))
+            media_file['dict_date'] = get_date(re_match.group(0), "normal")
         else:
             re_match = pattern_year_month.search(media_file['file_name'])  # Year & month
             if re_match is not None:
-                media_file['dict_date'] = get_date(re_match.group(0))
+                media_file['dict_date'] = get_date(re_match.group(0), "normal")
             else:
                 re_match = pattern_date_euro.search(media_file['file_name'])  # Date Euro format
                 if re_match is not None:
-                    media_file['dict_date'] = get_date(re_match.group(0))
+                    media_file['dict_date'] = get_date(re_match.group(0), "euro")
                 else:
                     re_match = pattern_year_month_euro.search(media_file['file_name'])   # Euro format year month
                     if re_match is not None:
-                        media_file['dict_date'] = get_date(re_match.group(0))
+                        media_file['dict_date'] = get_date(re_match.group(0), "euro")
                     else:
-                        re_match = pattern_year.search(media_file['file_name'])  # look for year only
+                        re_match = pattern_bad_date_euro.search(media_file['file_name'])  # look bad format
                         if re_match is not None:
-                            media_file['dict_date'] = get_date(re_match.group(0))
+                            media_file['dict_date'] = get_date(re_match.group(0), "euro")
+                        else:
+                            re_match = pattern_year.search(media_file['file_name'])  # look for year only
+                            if re_match is not None:
+                                media_file['dict_date'] = get_date(re_match.group(0), "year")
 
-    for media_file in list_non_dup_archival_media:
-        print " Asset: " + str(media_file['asset_number']) + " - " + str(media_file['dict_date'])
+    if v >= 3:
+        print("\nDate Check for archival list:\n")
+        for media_file in list_non_dup_archival_media:
+            print " Asset: " + str(media_file['asset_number']) + " - " + media_file['file_name']
+            print "\t" + str(media_file['dict_date']) + "\n"
 
     csv_dump = csv_process(csv_path, v)
 
@@ -583,23 +691,33 @@ def main():
     for tracker_entry in list_tracker_sheet:
         re_match = pattern_date.search(tracker_entry['asset_label'])  # match for normal date format
         if re_match is not None:
-            tracker_entry['label_dict_date'] = get_date(re_match.group(0))
+            tracker_entry['label_dict_date'] = get_date(re_match.group(0), "normal")
+            tracker_entry['date_pattern'] = re_match.group(0)
         else:
             re_match = pattern_year_month.search(tracker_entry['asset_label'])  # Year & month
             if re_match is not None:
-                tracker_entry['label_dict_date'] = get_date(re_match.group(0))
+                tracker_entry['label_dict_date'] = get_date(re_match.group(0), "normal")
+                tracker_entry['date_pattern'] = re_match.group(0)
             else:
                 re_match = pattern_date_euro.search(tracker_entry['asset_label'])  # Date Euro format
                 if re_match is not None:
-                    tracker_entry['label_dict_date'] = get_date(re_match.group(0))
+                    tracker_entry['label_dict_date'] = get_date(re_match.group(0), "normal")
+                    tracker_entry['date_pattern'] = re_match.group(0)
                 else:
                     re_match = pattern_year_month_euro.search(tracker_entry['asset_label'])  # Euro format year month
                     if re_match is not None:
-                        tracker_entry['label_dict_date'] = get_date(re_match.group(0))
+                        tracker_entry['label_dict_date'] = get_date(re_match.group(0), "euro")
+                        tracker_entry['date_pattern'] = re_match.group(0)
                     else:
-                        re_match = pattern_year.search(tracker_entry['asset_label'])  # look for year only
+                        re_match = pattern_bad_date_euro.search(tracker_entry['asset_label'])  # look bad format
                         if re_match is not None:
-                            tracker_entry['label_dict_date'] = get_date(re_match.group(0))
+                            tracker_entry['label_dict_date'] = get_date(re_match.group(0), "euro")
+                            tracker_entry['date_pattern'] = re_match.group(0)
+                        else:
+                            re_match = pattern_year.search(tracker_entry['asset_label'])  # look for year only
+                            if re_match is not None:
+                                tracker_entry['label_dict_date'] = get_date(re_match.group(0), "year")
+                                tracker_entry['date_pattern'] = re_match.group(0)
 
     # Now date field
     for tracker_entry in list_tracker_sheet:
@@ -627,16 +745,43 @@ def main():
         #print "Asset: " + str(tracker_entry['asset_number']) + " - Feild date: " + str(tracker_entry['field_dict_date']) + " label Date: " + str(tracker_entry['label_dict_date'])
 
     # now match the tracker entries with archival file list
-    print ""
+    if v >= 2:
+        print ("Asset numbers that were matched up:\n")
+
+    # create our final list with merged data
+    list_final = []
     for tracker_entry in list_tracker_sheet:
         match = False
+        temp_media_file = {}
         for media_file in list_non_dup_archival_media:
             if media_file['asset_number'] == tracker_entry['asset_number']:
                 match = True
-                print "Match: " + str(media_file['asset_number'])
+                temp_media_file = media_file
+                if v >= 2:
+                    print ("\tMatch: " + str(media_file['asset_number']))
+        if match:
+            temp_media_file['source'] = tracker_entry['source']
+            temp_media_file['copyright'] = tracker_entry['Copyright']
+            temp_media_file['link'] = tracker_entry['link']
+            temp_media_file['alerts'] = tracker_entry['notes']
+            temp_media_file['asset_label'] = tracker_entry['asset_label']
+            temp_media_file['dict_date'] = final_date(temp_media_file['dict_date'], tracker_entry['label_dict_date'],
+                                                      tracker_entry['field_dict_date'])
+            temp_media_file['date_pattern'] = tracker_entry['date_pattern']
+            temp_media_file['description'] = get_description(temp_media_file)
+            list_final.append(temp_media_file)
         if not match:
             list_errors.append(tracker_entry)
 
+    for item in list_final:
+        print "Asset #: " + str(item['asset_number'])
+        print "\t Copyright: " + item['copyright']
+        print "\t Source: " + item['source']
+        print "\t Date: " + str(item['dict_date'])
+        print "\t File Name: " + item['file_name']
+        print "\t Asset Label: " + item['asset_label']
+        print "\t Description: " + item['description']
+        print ""
     print "\nErrors:"
     for error in list_errors:
         print error

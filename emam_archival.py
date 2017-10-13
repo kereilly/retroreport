@@ -27,7 +27,7 @@ sys.setdefaultencoding('utf8')
 def set_argparse():
     # Start things off using pythons argparse. get user input and give help information
     parser = argparse.ArgumentParser(
-        description="Tracker Batch eMAM Downloader Version 1.0",
+        description="Tracker Batch eMAM Downloader Version 1.0.1",
         epilog="Please do not feed the Media Manager"
     )
 
@@ -56,6 +56,9 @@ def set_argparse():
     parser.add_argument("-g", "--google_screener", action="store_true", help="Create mp4's for the google drive")
 
     parser.add_argument("-o", "--xml_ingest", type=int, choices=[1, 2, 3, 4], help="Raid location usage")
+
+    parser.add_argument("-c", "--category", type=str, help="Create custom category. Good for loading in archival"
+                                                           "after project has started")
 
     parser.add_argument("-x", "--screener_location", type=str, help="Overide where the screeners are made")
 
@@ -676,7 +679,7 @@ def post_download(job, rough_screener_path, v=1):
             job['file_name_ext'] = string.replace(job['file_name_ext'], "unknown_video", "mp4")
 
     # check to see if we need to re encode video
-    encode_list = ["mkv", "webm"]
+    encode_list = ["mkv", "webm", "wmv"]
     encode = False
     for extension in encode_list:
         if extension in job['file_name_ext']:
@@ -765,7 +768,7 @@ def download_check(job, force_skip, v=1):
         answer = False
         message = "Asset has no link. Adding to future download list"
     else:
-        web_url = ["archive.org"]
+        web_url = ["archive.org", "vanderbilt.edu"]
         #web_url = ['zzzz.zzz']
         for url in web_url:
             if url in job['link']:
@@ -788,6 +791,8 @@ def choose_extension(url, ext):
         return ".mp4"
     elif "archives.gov" in url:
         return ".mp4"
+    elif "vanderbilt.edu" in url:
+        return ".mpg"
     else:
         if ext[0] == ".":
             return ext
@@ -875,10 +880,18 @@ def main():
         exit()
 
     # Grab the eMAM category for assets
+    categories = []
+    if args.category is not None:
+        if args.category != "":
+            categories.append(args.category)
+
     if csv_dump[0][2] != "" and csv_dump[0][3] != "":
-        category = csv_dump[0][3] + "/" + project_id + " " + csv_dump[0][2] + "/" + csv_dump[0][4]
+        categories.append(csv_dump[0][3] + "/" + project_id + " " + csv_dump[0][2] + "/" + csv_dump[0][4])
         if verbosity >= 2:
-            message = "Category path is: " + category
+            message = ""
+            for category in categories:
+                message = message + " " + category
+            message = "Category path(s): " + categories
             print (message)
             if verbosity >= 3:
                 f.write(str("Google sheet provided "))
@@ -1142,7 +1155,7 @@ def main():
                 f.write(str("\n"))
 
         # Get the xml ready for files that we have now
-        downloaded_job_xml_list = retrosupport.process.emam_metadata_format(downloaded_jobs, category,
+        downloaded_job_xml_list = retrosupport.process.emam_metadata_format(downloaded_jobs, categories,
                                                                 retrosupport.process.SideCarType.tracker, xml_path)
 
         # Create our xml file
@@ -1169,7 +1182,7 @@ def main():
                 job['file_name_ext'] = job['file_name'] + choose_extension(job['link'], extension)
 
         # format our metadata
-        future_job_xml_list = retrosupport.process.emam_metadata_format(future_import_jobs, category, retrosupport.
+        future_job_xml_list = retrosupport.process.emam_metadata_format(future_import_jobs, categories, retrosupport.
                                                                         process.SideCarType.tracker, xml_path)
 
         # get the location to save to, coming from input file

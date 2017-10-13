@@ -288,7 +288,7 @@ def parse_asset_label(asset_label):
         exit()
 
 
-def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
+def emam_metadata_format(jobs, categories, asset_type, path="xml_ingest3"):
 
     list_assets = []
     path = "\\\\10.0.2.8\\" + path
@@ -347,7 +347,11 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_NOTES_32'
                 metadata.value = job['alerts']
-                #metadata.value = ""
+                custom_metadata.append(metadata)
+            if job['decade'] != "":
+                metadata = CustomMetadata()
+                metadata.standard_id = 'CUST_FLD_DECADE_42'
+                metadata.value = job['decade']
                 custom_metadata.append(metadata)
             if job['keywords'] != "":
                 metadata = CustomMetadata()
@@ -396,11 +400,15 @@ def emam_metadata_format(jobs, category, asset_type, path="xml_ingest3"):
 
         # Add category
         category_list = []
-        for item in job['year_categories_list']:
-            if item != "":
-                category_list.append(item)
-        if category != "":
-            category_list.append(category)  # this category is from the google sheet csv file
+        if len(job['year_categories_list']) > 0:
+            for item in job['year_categories_list']:
+                if item != "":
+                    category_list.append(item)
+
+        if len(categories) > 0:
+            for category in categories:
+                if category != "":
+                    category_list.append(category)
 
         asset.categories = category_list
 
