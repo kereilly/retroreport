@@ -8,6 +8,7 @@ import xlsxwriter
 import retrosupport
 import sys
 from retrosupport import process
+from retrosupport import emamsidecar
 from collections import defaultdict
 
 # for unicode type issues when reading the csv file
@@ -28,19 +29,22 @@ def set_argparse():
     parser.add_argument("-d", "--directory", type=str,
                         help="Specify a directory to match metadata with")
 
+    parser.add_argument("-s", "--save", type=str,
+                        help="Specify a directory to save xml to and move files to be  imported")
+
     parser.add_argument("-r", "--project_id", type=str,
                              help="Project ID of archival you are importing")
 
     parser.add_argument("-c", "--category", type=str,
                         help="Category Path for archival you are importing")
 
-    parser.add_argument("-v", "--verbosity", type=int, default=1, choices=[0, 1, 2, 3],
+    parser.add_argument("-v", "--verbosity", type=int, default=1, choices=[0, 1, 2, 3, 4],
                         help="Increase, 2, or decrease, 0, the level of output. 3 is debug mode. Default is 1")
 
     parser.add_argument("-p", "--premiere", action="store_true", help="Convert media automatically if it is "
                                                                       "not premiere compatible")
 
-    parser.add_argument("-o", "--xml_ingest", type=int, choices=[1, 2, 3, 4, 5], help="Raid location usage")
+    parser.add_argument("-o", "--xml_ingest", type=int, choices=[2, 3, 5], help="Raid location usage")
 
 
     # have argparse do its thing
@@ -65,12 +69,21 @@ def check_args(args):
 
     # check and make sure output directory is good
     if args.directory is None:
-        print ("You didn't specify a directory to save to")
+        print ("You didn't specify a directory to search archival footage for")
         print ("Please specify a valid directory to save to with the -d switch")
         exit()  # Cuz we have nowhere to put anything
     elif not os.path.isdir(args.directory):
-        print ("The directory you specified to save to does not exist: "
+        print ("The directory you specified to search does not exist: "
                + args.directory + " please specify a valid directory to save to")
+        exit()  # Cuz we have nowhere to put anything
+
+    if args.save is None:
+        print ("You didn't specify a directory to save xml information and move media files to")
+        print ("Please specify a valid directory to save to with the -s switch")
+        exit()  # Cuz we have nowhere to put anything
+    elif not os.path.isdir(args.save):
+        print ("The directory you specified to search does not exist: "
+                + args.save + " please specify a valid directory to save to")
         exit()  # Cuz we have nowhere to put anything
 
     # check project ID
@@ -88,10 +101,16 @@ def check_args(args):
 
 
 # Create dictionary with all the metadata we can handle
-def set_metadata(local_file, path, v=1):
+def set_metadata(local_file, path, project_id, v=1):
+    year_categories_list = []
     # Create dictionary for our files
     dict_temp = {'file_name': local_file, 'file_path': path, 'asset_number': "", 'source': "", 'source_id': "",
-                 'description': "", 'link': "", 'dict_date': {'year': "", 'month': "", 'day': "", 'decade': ""}}
+                 'description': "", 'link': "", 'dict_date': {'year': "", 'month': "", 'day': "", 'decade': ""},
+                 'project_id': project_id, 'keywords': "", 'copy_holder': "", 'file_name_ext': "", 'details': "",
+                 'year_categories_list': year_categories_list, 'alerts': "", 'decade': "",
+                 'master_status': "", 'alerts': "", 'first_in': "",
+                 'first_out': "", 'first_label': "", 'second_in': "",
+                 'second_out': "", 'second_label': ""}
     return dict_temp
 
 
@@ -165,7 +184,7 @@ def choose_file(asset_list, v=1):
                 media_file['file_value'] = media_file['file_value'] + 3  # add three points because of incapability
         media_file['file_size'] = os.path.getsize(media_file['file_path'])  # get file size
 
-    if v >= 3:
+    if v >= 4:
         print ("\nOld Order:")
         for media_file in asset_list:
             print (media_file['file_size'])
@@ -173,14 +192,14 @@ def choose_file(asset_list, v=1):
 
     asset_list = sorted(asset_list, key=get_key_file_size)    # sort our list by file size. smaller first
 
-    if v >= 3:
+    if v >= 4:
         print ("\nNew Order:")
     value = 0
     for media_file in asset_list:
         media_file['file_value'] = media_file['file_value'] + value  # add the value based on order in list
-        if v >= 3:
+        if v >= 4:
             print (media_file['file_size'])
-    if v >= 3:
+    if v >= 4:
         print ("\n")
 
     asset_list = sorted(asset_list, key=get_key_file_value)
@@ -258,7 +277,7 @@ def get_date(date_string, date_type):
 
 def csv_process(path, v=1):
     # Open the csv file to work on
-    if v >= 2:
+    if v >= 3:
         print ("Attempting to open csv file at: " + path)
     csv_file = process.open_file(path, "r")
 
@@ -280,7 +299,7 @@ def csv_process(path, v=1):
                 job_clean.append(text)
             jobs_list_clean.append(job_clean)
             job_clean = []
-        if v >= 3:
+        if v >= 4:
             print ("output of CSV file:")
             for item in jobs_list_clean:
                 print (item)
@@ -295,6 +314,194 @@ def tracker_dict(item):
              'label_dict_date': {'year': "", 'month': "", 'day': ""},  # store date from label
              'field_dict_date': {'year': "", 'month': "", 'day': ""}}  # store date from field
     return dicts
+
+
+def year_categories(year, decade, v=1):
+
+    year_inf = [False, False, False]  # place holder to check req for year. 0 is empty, 1 is digit, 2 is 4 characters
+    category_paths = []  # a holder for all our paths
+
+    category_path = "Archival/"  # Root of master archival category
+    if year != "":
+        year_inf[0] = True  # check to see if its an integer
+        if year.isdigit():
+            year_inf[1] = True
+        else:
+            if v >= 3:
+                print("Year is not correct format. Not a number")
+        if len(year) == 4:  # check to see if the integer is 4 digits long
+            year_inf[2] = True
+        else:
+            if v >= 3:
+                print("Year is not in correct format. It is not a 4 digit number")
+    else:
+        if v >= 3:
+            print("This asset has no year entered")
+
+    if year_inf[0] and year_inf[1] and year_inf[2]:
+        int_year = int(year)  # convert year to integer so we can compare
+        if int_year < 1920:
+            category_path = category_path + "1919-Under"
+        elif int_year < 1930:
+            category_path = category_path + "1920-1929/"
+            if int_year < 1925:
+                category_path = category_path + "1920-1924/" + str(year)
+            else:
+                category_path = category_path + "1925-1929/" + str(year)
+        elif int_year < 1940:
+            category_path = category_path + "1930-1939/"
+            if int_year < 1935:
+                category_path = category_path + "1930-1934/" + str(year)
+            else:
+                category_path = category_path + "1935-1939/" + str(year)
+        elif int_year < 1950:
+            category_path = category_path + "1940-1949/"
+            if int_year < 1945:
+                category_path = category_path + "1940-1944/" + str(year)
+            else:
+                category_path = category_path + "1945-1949/" + str(year)
+        elif int_year < 1960:
+            category_path = category_path + "1950-1959/"
+            if int_year < 1955:
+                category_path = category_path + "1950-1954/" + str(year)
+            else:
+                category_path = category_path + "1955-1959/" + str(year)
+        elif int_year < 1970:
+            category_path = category_path + "1960-1969/"
+            if int_year < 1965:
+                category_path = category_path + "1960-1964/" + str(year)
+            else:
+                category_path = category_path + "1965-1969/" + str(year)
+        elif int_year < 1980:
+            category_path = category_path + "1970-1979/"
+            if int_year < 1975:
+                category_path = category_path + "1970-1974/" + str(year)
+            else:
+                category_path = category_path + "1975-1979/" + str(year)
+        elif int_year < 1990:
+            category_path = category_path + "1980-1989/"
+            if int_year < 1985:
+                category_path = category_path + "1980-1984/" + str(year)
+            else:
+                category_path = category_path + "1985-1989/" + str(year)
+        elif int_year < 2000:
+            category_path = category_path + "1990-1999/"
+            if int_year < 1995:
+                category_path = category_path + "1990-1994/" + str(year)
+            else:
+                category_path = category_path + "1995-1999/" + str(year)
+        elif int_year < 2010:
+            category_path = category_path + "2000-2009/"
+            if int_year < 2005:
+                category_path = category_path + "2000-2004/" + str(year)
+            else:
+                category_path = category_path + "2005-2009/" + str(year)
+        elif int_year < 2020:
+            category_path = category_path + "2010-2019/"
+            if int_year < 2015:
+                category_path = category_path + "2010-2014/" + str(year)
+            else:
+                category_path = category_path + "2015-2019/" + str(year)
+        elif int_year < 2030:
+            category_path = category_path + "2010-2019/"
+            if int_year < 2025:
+                category_path = category_path + "2020-2024/" + str(year)
+            else:
+                category_path = category_path + "2025-2029/" + str(year)
+        elif int_year < 2040:
+            category_path = category_path + "2010-2019/"
+            if int_year < 2035:
+                category_path = category_path + "2030-2034/" + str(year)
+            else:
+                category_path = category_path + "2035-2039/" + str(year)
+        else:
+            category_path = ""
+            if v >= 3:
+                print("Error. Year is out of range for the master archival category")
+
+        category_paths.append(category_path)
+
+    # take care of decade
+    elif decade != "":
+        if "1920" in decade:
+            category_paths.append("Archival/1920-1929-Decade")
+        if "1930" in decade:
+            category_paths.append("Archival/1930-1939-Decade")
+        if "1940" in decade:
+            category_paths.append("Archival/1940-1949/Decade")
+        if "1950" in decade:
+            category_paths.append("Archival/1950-1959/Decade")
+        if "1960" in decade:
+            category_paths.append("Archival/1960-1969/Decade")
+        if "1970" in decade:
+            category_paths.append("Archival/1970-1979/Decade")
+        if "1980" in decade:
+            category_paths.append("Archival/1980-1989/Decade")
+        if "1990" in decade:
+            category_paths.append("Archival/1990-1999/Decade")
+        if "2000" in decade:
+            category_paths.append("Archival/2000-2009/Decade")
+        if "2010" in decade:
+            category_paths.append("Archival/2010-2019/Decade")
+        if "2020" in decade:
+            category_paths.append("Archival/2020-2029/Decade")
+        if "2030" in decade:
+            category_paths.append("Archival/2030-2039/Decade")
+    else:
+        if v >= 3:
+            print("No decade defined for this asset")
+    return category_paths
+
+
+def final_date(media_file, label, field):
+
+    # set our dates. priority is date from file name then asset label, then date field in tracker
+    date = {'year': "", 'month': "", 'day': ""}
+
+    # year first
+    if media_file['year'] != "":
+        date['year'] = media_file['year']
+    elif label['year'] != "":
+        date['year'] = label['year']
+    elif field['year'] != "":
+        date['year'] = field['year']
+    # month
+    if media_file['month'] != "":
+        date['month'] = media_file['month']
+    elif label['month'] != "":
+        date['month'] = label['month']
+    elif field['month'] != "":
+        date['month'] = field['month']
+    # day
+    if media_file['day'] != "":
+        date['day'] = media_file['day']
+    elif label['day'] != "":
+        date['day'] = label['day']
+    elif field['day'] != "":
+        date['day'] = field['day']
+
+    return date
+
+
+def get_description(item):
+    description = item['asset_label']
+    description = description.replace(item['date_pattern'], "")
+    pattern_archive = re.compile('RR[1-3]\d\d_A\d{1,3}', re.IGNORECASE)
+    re_match = pattern_archive.search(description)
+    if re_match is not None:
+        description = description.replace(str(re_match.group(0)), "")
+    description = description.replace(item['source'], "")
+    if item['source'].lower() == "internet archive" or item['source'].lower() == "archive.org":
+        pattern = re.compile("IA", re.IGNORECASE)
+        description = pattern.sub("", description)
+    description = description.replace("_", " ")
+    description = description.replace(item['copyright'], "")
+    pattern = re.compile("screener", re.IGNORECASE)
+    description = pattern.sub("", description)
+    pattern = re.compile("master", re.IGNORECASE)
+    description = pattern.sub("", description)
+
+    return description
 
 
 def year_categories(year, decade, v=1):
@@ -434,56 +641,16 @@ def year_categories(year, decade, v=1):
     return category_paths
 
 
-def final_date(media_file, label, field):
+def find_xml(xml_location):
 
-    # set our dates. priority is date from file name then asset label, then date field in tracker
-    date = {'year': "", 'month': "", 'day': ""}
-
-    # year first
-    if media_file['year'] != "":
-        date['year'] = media_file['year']
-    elif label['year'] != "":
-        date['year'] = label['year']
-    elif field['year'] != "":
-        date['year'] = field['year']
-    # month
-    if media_file['month'] != "":
-        date['month'] = media_file['month']
-    elif label['month'] != "":
-        date['month'] = label['month']
-    elif field['month'] != "":
-        date['month'] = field['month']
-    # day
-    if media_file['day'] != "":
-        date['day'] = media_file['day']
-    elif label['day'] != "":
-        date['day'] = label['day']
-    elif field['day'] != "":
-        date['day'] = field['day']
-
-    return date
-
-
-def get_description(item):
-    description = item['asset_label']
-    description = description.replace(item['date_pattern'], "")
-    pattern_archive = re.compile('RR[1-3]\d\d_A\d{1,3}', re.IGNORECASE)
-    re_match = pattern_archive.search(description)
-    if re_match is not None:
-        description = description.replace(str(re_match.group(0)), "")
-    description = description.replace(item['source'], "")
-    if item['source'].lower() == "internet archive" or item['source'].lower() == "archive.org":
-        pattern = re.compile("IA", re.IGNORECASE)
-        description = pattern.sub("", description)
-    description = description.replace("_", " ")
-    description = description.replace(item['copyright'], "")
-    pattern = re.compile("screener", re.IGNORECASE)
-    description = pattern.sub("", description)
-    pattern = re.compile("master", re.IGNORECASE)
-    description = pattern.sub("", description)
-
-    return description
-
+    if xml_location == 5:
+        return "xml_ingest5"
+    elif xml_location == 2:
+        return "xml_ingest2"
+    elif xml_location ==3:
+        return "xml_ingest3"
+    else:
+        return "xml_ingest5"
 
 
 def main():
@@ -496,6 +663,11 @@ def main():
 
     check_args(args)        # make sure user entered correct input
     v = args.verbosity
+    if args.xml_ingest is None:
+        xml_ingest = "xml_ingest5"
+    else:
+        xml_ingest = find_xml(args.xml_ingest)
+    categories = [args.category]
     project_id = args.project_id    # user entered project id
     csv_path = args.input   # location of csv file containing metadata
     directory = args.directory
@@ -521,11 +693,12 @@ def main():
     list_non_dup_archival_media = []  # media in the user selected project that has no duplicate asset number
     list_tracker_sheet = []     # all the tracker entries that we will match up to a file
     list_errors = []  # to store any errors in. Assets in tracker without matching files, tracker elements < 6
+    list_vandy_entries =[]
 
     #  create the raw list of files
     for root, dirs, files, in os.walk(directory):
         for file_local in files:
-            item = set_metadata(file_local,os.path.join(root, file_local), v)
+            item = set_metadata(file_local, os.path.join(root, file_local), project_id.upper(), v)
             raw_list.append(item)
 
     # first sort. ignore hidden files and small files
@@ -588,7 +761,7 @@ def main():
     if len(list_vanderbilt) > 0:
         if v >= 1:
             print ("Vanderbilt Media found")
-            if v >= 2:
+            if v >= 3:
                 print ("\nVanderbilt Media list:")
                 for item in list_vanderbilt:
                     print ("\t" + item['file_path'])
@@ -596,19 +769,19 @@ def main():
     if len(list_vanderbilt_other_projects) > 0:
         if v >= 1:
             print ("Vanderbilt from other projects found")
-            if v >= 2:
+            if v >= 3:
                 print ("\nVanderbilt from other projects list:")
                 for item in list_vanderbilt_other_projects:
                     print ("\t" + item['file_path'])
 
     if len(list_non_dup_archival_media) > 0:
-        if v >= 2:
+        if v >= 3:
             print ("\nNon duplicated assets:")
             for item in list_non_dup_archival_media:
                 print ("\t" + item['file_path'] + " A: " + str(item['asset_number']))
 
     if len(list_duplicated_archival_media) > 0:
-        if v >= 2:
+        if v >= 3:
             print ("\nDuplicated assets:")
             for sublist in list_duplicated_archival_media:
                 for media in sublist:
@@ -619,14 +792,14 @@ def main():
             list_non_dup_archival_media.append(choose_file(sublist, v))
 
     if len(list_non_dup_archival_media) > 0:
-        if v >= 2:
+        if v >= 3:
             print ("\nNon duplicated assets after adding duplicate list:")
             list_non_dup_archival_media = sorted(list_non_dup_archival_media, key=get_key_asset_number)
             for item in list_non_dup_archival_media:
                 print ("\t" + item['file_path'] + " A: " + str(item['asset_number']))
 
     if len(list_archival_other_projects) > 0:
-        if v >= 2:
+        if v >= 3:
             print ("\nOther project Media:")
             for item in list_archival_other_projects:
                 print ("\t" + item['file_path'])
@@ -669,11 +842,14 @@ def main():
 
         if len(item) < 6:
             # Not enough elements in this entry. add to errors
+            item['error'] = "Not enough elements in tracker"
             list_errors.append(item)
         else:
             tracker_info = tracker_dict(item)
             re_match = pattern_asset_num.search(tracker_info['asset_label'])
-            if re_match is not None:
+            if "vanderbilt" in tracker_info['asset_label'].lower() or "vandy" in tracker_info['asset_label'].lower():
+                list_vandy_entries.append(tracker_info)
+            elif re_match is not None:
                 asset = re_match.group(0)  # grab the first match
                 #  Strip out unwanted characters to get our asset number
                 replace = "_.Aa"  # what characters to remove
@@ -684,6 +860,7 @@ def main():
                 list_tracker_sheet.append(tracker_info)
 
             else:  # add item to error list because we could not find asset number in label
+                item['error'] = "No Asset number found; tracker"
                 list_errors.append(item)
 
     # extract Dates from our new tracker list
@@ -741,11 +918,9 @@ def main():
                         if re_match is not None:
                             tracker_entry['field_dict_date'] = get_date(re_match.group(0))
 
-    #for tracker_entry in list_tracker_sheet:
-        #print "Asset: " + str(tracker_entry['asset_number']) + " - Feild date: " + str(tracker_entry['field_dict_date']) + " label Date: " + str(tracker_entry['label_dict_date'])
 
     # now match the tracker entries with archival file list
-    if v >= 2:
+    if v >= 3:
         print ("Asset numbers that were matched up:\n")
 
     # create our final list with merged data
@@ -757,7 +932,7 @@ def main():
             if media_file['asset_number'] == tracker_entry['asset_number']:
                 match = True
                 temp_media_file = media_file
-                if v >= 2:
+                if v >= 3:
                     print ("\tMatch: " + str(media_file['asset_number']))
         if match:
             temp_media_file['source'] = tracker_entry['source']
@@ -769,21 +944,85 @@ def main():
                                                       tracker_entry['field_dict_date'])
             temp_media_file['date_pattern'] = tracker_entry['date_pattern']
             temp_media_file['description'] = get_description(temp_media_file)
+            # grab source ID
+            pattern_id = re.compile(' \d\d\d\d\d+')
+            re_match = pattern_id.search(temp_media_file['description'])  # Date Euro format
+            if re_match is not None:
+                temp_media_file['source_id'] = re_match.group(0)
+                source_id = re_match.group(0)
+                pattern = re.compile(source_id, re.IGNORECASE)
+                temp_media_file['description'] = pattern.sub("", temp_media_file['description'])
+            # fix file names for xml ingest
+            index = str.rfind(temp_media_file['file_path'], '/') + 1
+            temp_media_file['file_name_ext'] = temp_media_file['file_path'][index:]
+            index = str.rfind(temp_media_file['file_name'], '.')
+            temp_media_file['file_name'] = temp_media_file['file_name'][:index]
+            temp_media_file['year_categories_list'] = year_categories(temp_media_file['dict_date']['year'], "")
+            temp_media_file['date'] = temp_media_file['dict_date']
             list_final.append(temp_media_file)
         if not match:
+            tracker_entry['error'] = "No match found for this entry"
             list_errors.append(tracker_entry)
 
-    for item in list_final:
-        print "Asset #: " + str(item['asset_number'])
-        print "\t Copyright: " + item['copyright']
-        print "\t Source: " + item['source']
-        print "\t Date: " + str(item['dict_date'])
-        print "\t File Name: " + item['file_name']
-        print "\t Asset Label: " + item['asset_label']
-        print "\t Description: " + item['description']
-        print ""
-    print "\nErrors:"
-    for error in list_errors:
-        print error
+    if v >= 4:
+        print ("\nVanderbilt items in tracker:")
+        for item in list_vandy_entries:
+            print ("\t" + item['asset_label'])
+    if v >= 3:
+        print ("\n\t\t\t\tData Check")
+        print ("__________________________________________________")
+        for item in list_final:
+            print ("Asset #: " + str(item['asset_number']))
+            print ("\t File Name:   " + item['file_name_ext'])
+            print ("\t Asset Label: " + item['asset_label'])
+            print ("\t File Path: " + item['file_path'])
+            print ("\t year Category: " + str(item['year_categories_list']))
+            print ("\t Copyright: " + item['copyright'])
+            print ("\t Source: " + item['source'])
+            print ("\t Source ID: " + item['source_id'])
+            print ("\t Date: " + str(item['dict_date']))
+            print ("\t Description: " + item['description'])
+            print ("")
+    if v >= 4:
+        print ("\nErrors:")
+        for error in list_errors:
+            print ("\nError Description: " + error['error'])
+            for key, value in error.iteritems():
+                print ("\t" + str(key) + ": " + str(value))
+
+    if len(list_vanderbilt) > 0:
+        pattern_vandy_date = re.compile('_[1-2]\d\d\d_[0|1]\d_[0-3]\d')
+        pattern_network = re.compile('_\D\D\D_')
+        for item in list_vanderbilt:
+            re_match = pattern_vandy_date.search(item['file_name'])  # get date
+            if re_match is not None:
+                item['dict_date'] = get_date(re_match.group(0), "normal")
+            re_match = pattern_network.search(item['file_name'])
+            if re_match is not None:
+                item['copy_holder'] = re_match.group(0).replace('_', "")
+            item['source'] = "Vanderbilt"
+            # fix file names for xml ingest
+            index = str.rfind(item['file_path'], '/') + 1
+            item['file_name_ext'] = item['file_path'][index:]
+            item['file_name_ext'] = item['file_name']
+            index = str.rfind(item['file_name'], '.')
+            item['file_name'] = item['file_name'][:index]
+            item['date'] = item['dict_date']
+            item['asset_number'] = str(item['asset_number'])
+            item['year_categories_list'] = year_categories(item['dict_date']['year'], "")
+            if v >= 2:
+                print ("\nVanderbilt final list:\n")
+                print item
+
+    # Get the xml ready for files that we have now
+    xml_path = args.save + "/" + project_id + '_sidecar.xml'
+    downloaded_job_xml_list = retrosupport.process.emam_metadata_format(list_vanderbilt, categories,
+                                                                            retrosupport.process.SideCarType.tracker,
+                                                                                xml_ingest)
+
+    retrosupport.emamsidecar.generate_sidecar_xml(
+                'DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', downloaded_job_xml_list, xml_path)
+
+
 if __name__ == "__main__":
         main()
