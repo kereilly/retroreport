@@ -9,6 +9,7 @@ import retrosupport
 import sys
 from retrosupport import process
 from retrosupport import emamsidecar
+import editdistance
 from collections import defaultdict
 
 # for unicode type issues when reading the csv file
@@ -86,6 +87,10 @@ def check_args(args):
                 + args.save + " please specify a valid directory to save to")
         exit()  # Cuz we have nowhere to put anything
 
+    if args.category is None:
+        print ("You need to write in a category for this projects archival location")
+        exit()
+
     # check project ID
         if args.project_id is None:
             print ("You must enter a Project ID with -r. For example:")
@@ -118,7 +123,10 @@ def get_unique_asset_numbers(media_list, v=1):
 
     new_list = []
     for item in media_list:
-        new_list.append(item['asset_number'])
+        if isinstance(item, list):
+            new_list.append(item[0]['asset_number'])
+        else:
+            new_list.append(item['asset_number'])
     asset_set = set(new_list)
     new_list = list(asset_set)
     return new_list
@@ -126,8 +134,10 @@ def get_unique_asset_numbers(media_list, v=1):
 
 def sort_list(list_to_sort, v=1):
 
+    list_duplicates_first_pass = []
     list_duplicates = []
     list_non_dup_archival_media = []
+    list_multiple_unique = []
 
     asset_numbers = get_unique_asset_numbers(list_to_sort)
     for asset in asset_numbers:
@@ -136,12 +146,52 @@ def sort_list(list_to_sort, v=1):
             if item['asset_number'] == int(asset):
                 list_temp.append(item)
         if len(list_temp) > 1:  # We have duplicates. save this list
-            list_duplicates.append(list_temp)
+            list_duplicates_first_pass.append(list_temp)
         elif len(list_temp) == 1:  # no duplicates. Don't save the list save the one item
             list_non_dup_archival_media.append(list_temp[0])
 
-        package = [list_duplicates, list_non_dup_archival_media]
+    #  sort out assets that have multiple unique files to one asset number
+    for sublist in list_duplicates_first_pass:
+        unique = True
+        for item in sublist:
+            if "master" in item['file_name'].lower() or "trimmed" in item['file_name'].lower():
+                unique = False
+        if unique:
+            compare_text = ""
+            first_time = True
+            levenshtein_int = 0
+            for item in sublist:
+                index = item['file_name'].rfind(".")
+                if first_time:
+                    compare_text = item['file_name'][:index]
+                    first_time = False
+                else:
+                    text = item['file_name'][:index]
+                    compared = editdistance.eval(compare_text, text)
+                    levenshtein_int = levenshtein_int + levenshtein(compared)
+            if levenshtein_int > 6:
+                unique = True
+            else:
+                unique = False
+        if unique:
+            for item in sublist:
+                list_multiple_unique.append(item)
+        else:
+            list_duplicates.append(sublist)
+
+    package = [list_duplicates, list_non_dup_archival_media, list_multiple_unique]
     return package
+
+
+def levenshtein(input):
+
+    if isinstance(input, long):
+        return int(input)
+    elif isinstance(input, int):
+        return input
+    else:
+        input = input.replace("L", "")
+    return int(input)
 
 
 # simple functions to get a key to sort lists.
@@ -177,7 +227,7 @@ def choose_file(asset_list, v=1):
     # now it gets more complicated. Favor files smaller in size unless they have undesirable extensions.
 
     # Add value for bad extensions, get file size
-    undesirable_formats = [".webm", "mkv"]
+    undesirable_formats = ["webm", "mkv", "wmv"]
     for media_file in asset_list:
         for extension in undesirable_formats:
             if extension in media_file['file_name']:
@@ -693,6 +743,7 @@ def main():
     list_non_dup_archival_media = []  # media in the user selected project that has no duplicate asset number
     list_tracker_sheet = []     # all the tracker entries that we will match up to a file
     list_errors = []  # to store any errors in. Assets in tracker without matching files, tracker elements < 6
+    list_multiple_unique = []  # for when we have multiple file that are unique in one asset number
     list_vandy_entries =[]
 
     #  create the raw list of files
@@ -755,8 +806,14 @@ def main():
         unpack = sort_list(list_archival_media)  # this function separates the list into two separate lists
         list_duplicated_archival_media = unpack[0]
         list_non_dup_archival_media = sorted(unpack[1], key=get_key_asset_number)  # sort this list by asset number
+        list_multiple_unique = sorted(unpack[2], key=get_key_asset_number)  # sort this list by asset number
     else:
         print ("No Archival Media Found!\nTry another directory")
+
+    print "_________________________________"
+    for item in list_multiple_unique:
+
+        print item['file_name']
 
     if len(list_vanderbilt) > 0:
         if v >= 1:
@@ -791,13 +848,6 @@ def main():
         for sublist in list_duplicated_archival_media:
             list_non_dup_archival_media.append(choose_file(sublist, v))
 
-    if len(list_non_dup_archival_media) > 0:
-        if v >= 3:
-            print ("\nNon duplicated assets after adding duplicate list:")
-            list_non_dup_archival_media = sorted(list_non_dup_archival_media, key=get_key_asset_number)
-            for item in list_non_dup_archival_media:
-                print ("\t" + item['file_path'] + " A: " + str(item['asset_number']))
-
     if len(list_archival_other_projects) > 0:
         if v >= 3:
             print ("\nOther project Media:")
@@ -829,12 +879,6 @@ def main():
                             re_match = pattern_year.search(media_file['file_name'])  # look for year only
                             if re_match is not None:
                                 media_file['dict_date'] = get_date(re_match.group(0), "year")
-
-    if v >= 3:
-        print("\nDate Check for archival list:\n")
-        for media_file in list_non_dup_archival_media:
-            print " Asset: " + str(media_file['asset_number']) + " - " + media_file['file_name']
-            print "\t" + str(media_file['dict_date']) + "\n"
 
     csv_dump = csv_process(csv_path, v)
 
@@ -918,10 +962,7 @@ def main():
                         if re_match is not None:
                             tracker_entry['field_dict_date'] = get_date(re_match.group(0))
 
-
     # now match the tracker entries with archival file list
-    if v >= 3:
-        print ("Asset numbers that were matched up:\n")
 
     # create our final list with merged data
     list_final = []
@@ -932,8 +973,6 @@ def main():
             if media_file['asset_number'] == tracker_entry['asset_number']:
                 match = True
                 temp_media_file = media_file
-                if v >= 3:
-                    print ("\tMatch: " + str(media_file['asset_number']))
         if match:
             temp_media_file['source'] = tracker_entry['source']
             temp_media_file['copyright'] = tracker_entry['Copyright']
@@ -1010,9 +1049,6 @@ def main():
             item['date'] = item['dict_date']
             item['asset_number'] = str(item['asset_number'])
             item['year_categories_list'] = year_categories(item['dict_date']['year'], "")
-            if v >= 2:
-                print ("\nVanderbilt final list:\n")
-                print item
 
     # Get the xml ready for files that we have now
     xml_path = args.save + "/" + project_id + '_sidecar.xml'
