@@ -533,8 +533,16 @@ def final_date(media_file, label, field):
     return date
 
 
-def get_description(item):
-    description = item['asset_label']
+def get_description(item, multi=False):
+    if not multi:
+        description = item['asset_label']
+    else:
+        index = item['file_name'].rfind(".")
+        file_name = item['file_name'][:index]
+        if len(file_name) > len(item['asset_label']):
+            description = file_name
+        else:
+            description = item['asset_label']
     description = description.replace(item['date_pattern'], "")
     pattern_archive = re.compile('RR[1-3]\d\d_A\d{1,3}', re.IGNORECASE)
     re_match = pattern_archive.search(description)
@@ -810,11 +818,6 @@ def main():
     else:
         print ("No Archival Media Found!\nTry another directory")
 
-    print "_________________________________"
-    for item in list_multiple_unique:
-
-        print item['file_name']
-
     if len(list_vanderbilt) > 0:
         if v >= 1:
             print ("Vanderbilt Media found")
@@ -979,6 +982,7 @@ def main():
             temp_media_file['link'] = tracker_entry['link']
             temp_media_file['alerts'] = tracker_entry['notes']
             temp_media_file['asset_label'] = tracker_entry['asset_label']
+            temp_media_file['asset_number'] = str(temp_media_file['asset_number'])
             temp_media_file['dict_date'] = final_date(temp_media_file['dict_date'], tracker_entry['label_dict_date'],
                                                       tracker_entry['field_dict_date'])
             temp_media_file['date_pattern'] = tracker_entry['date_pattern']
@@ -1008,7 +1012,7 @@ def main():
         for item in list_vandy_entries:
             print ("\t" + item['asset_label'])
     if v >= 3:
-        print ("\n\t\t\t\tData Check")
+        print ("\n\t\t\t\tData Check Regular Archival List")
         print ("__________________________________________________")
         for item in list_final:
             print ("Asset #: " + str(item['asset_number']))
@@ -1050,14 +1054,139 @@ def main():
             item['asset_number'] = str(item['asset_number'])
             item['year_categories_list'] = year_categories(item['dict_date']['year'], "")
 
-    # Get the xml ready for files that we have now
-    xml_path = args.save + "/" + project_id + '_sidecar.xml'
-    downloaded_job_xml_list = retrosupport.process.emam_metadata_format(list_vanderbilt, categories,
-                                                                            retrosupport.process.SideCarType.tracker,
-                                                                                xml_ingest)
+    # get the files with multiple entries   list_multiple_unique
+    list_multiple_unique_final = []
+    for tracker_entry in list_tracker_sheet:
+        for media_file in list_multiple_unique:
+            if media_file['asset_number'] == tracker_entry['asset_number']:
+                media_file['source'] = tracker_entry['source']
+                media_file['copyright'] = tracker_entry['Copyright']
+                media_file['link'] = tracker_entry['link']
+                media_file['alerts'] = tracker_entry['notes']
+                media_file['asset_label'] = tracker_entry['asset_label']
+                media_file['asset_number'] = str(media_file['asset_number'])
+                media_file['dict_date'] = final_date(media_file['dict_date'], tracker_entry['label_dict_date'],
+                                                      tracker_entry['field_dict_date'])
+                media_file['date_pattern'] = tracker_entry['date_pattern']
+                media_file['description'] = get_description(media_file, True)
 
-    retrosupport.emamsidecar.generate_sidecar_xml(
-                'DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', downloaded_job_xml_list, xml_path)
+                # fix file names for xml ingest
+                index = str.rfind(media_file['file_path'], '/') + 1
+                media_file['file_name_ext'] = media_file['file_path'][index:]
+                index = str.rfind(media_file['file_name'], '.')
+                media_file['file_name'] = media_file['file_name'][:index]
+                media_file['year_categories_list'] = year_categories(media_file['dict_date']['year'], "")
+                media_file['date'] = media_file['dict_date']
+                list_multiple_unique_final.append(media_file)
+
+    if v >= 3:
+        print ("\n\t\t\t\tData Check Multiple files to one asset number")
+        print ("__________________________________________________")
+        for item in list_multiple_unique_final:
+            print ("Asset #: " + str(item['asset_number']))
+            print ("\t File Name:   " + item['file_name_ext'])
+            print ("\t Asset Label: " + item['asset_label'])
+            print ("\t File Path: " + item['file_path'])
+            print ("\t year Category: " + str(item['year_categories_list']))
+            print ("\t Copyright: " + item['copyright'])
+            print ("\t Source: " + item['source'])
+            print ("\t Source ID: " + item['source_id'])
+            print ("\t Date: " + str(item['dict_date']))
+            print ("\t Description: " + item['description'])
+            print ("")
+
+
+        print ("\n\t\t\t\tData Check Vanderbilt media")
+        print ("__________________________________________________")
+        for item in list_vanderbilt:
+            print ("Asset #: " + str(item['asset_number']))
+            print ("\t File Name:   " + item['file_name_ext'])
+            print ("\t File Path: " + item['file_path'])
+            print ("\t year Category: " + str(item['year_categories_list']))
+            print ("\t Source: " + item['source'])
+            print ("\t Source ID: " + item['source_id'])
+            print ("\t Date: " + str(item['dict_date']))
+            print ("\t Description: " + item['description'])
+            print ("")
+
+    #  Finish up vandy media
+    if len(list_vanderbilt) > 0:
+        # Get the xml ready for vanderbilt
+        xml_path = args.save + "/" + project_id + '_sidecar_Vanderbilt.xml'
+        asset_xml_list = retrosupport.process.emam_metadata_format(list_vanderbilt, categories,
+                                                                                retrosupport.process.SideCarType.tracker,
+                                                                                    xml_ingest)
+
+        retrosupport.emamsidecar.generate_sidecar_xml(
+                    'DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', asset_xml_list, xml_path)
+
+        # Make the directory
+        vanderbilt_media = args.save + "/" + "vanderbilt_media"
+        os.makedirs(vanderbilt_media)
+
+        # Move files
+        for file in list_vanderbilt:
+            source = file['file_path']
+            index = file['file_path'].rfind("/")
+            file_name = file['file_path'][index:]
+            dest = vanderbilt_media + file_name
+            os.rename(source, dest)
+
+
+        # Finish off muilti file list
+    if len(list_multiple_unique_final) > 0:
+        # Get the xml ready for multi file for single asset
+        xml_path = args.save + "/" + project_id + '_sidecar_Multi_File.xml'
+        asset_xml_list = retrosupport.process.emam_metadata_format(list_multiple_unique_final, categories,
+                                                                   retrosupport.process.SideCarType.tracker,
+                                                                   xml_ingest)
+
+        retrosupport.emamsidecar.generate_sidecar_xml(
+            'DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', asset_xml_list, xml_path)
+
+        # Make directory
+        multiple_media = args.save + "/" + "multiple_files_media"
+        os.makedirs(multiple_media)
+
+        # move Files
+        for file in list_multiple_unique_final:
+            source = file['file_path']
+            index = file['file_path'].rfind("/")
+            file_name = file['file_path'][index:]
+            dest = multiple_media + file_name
+            os.rename(source, dest)
+
+   #  Finish up archival media
+    if len(list_final) > 0:
+        # Get the xml ready for archival media
+        xml_path = args.save + "/" + project_id + '_sidecar_regular_archival.xml'
+        asset_xml_list = retrosupport.process.emam_metadata_format(list_final, categories,
+                                                                   retrosupport.process.SideCarType.tracker,
+                                                                   xml_ingest)
+
+        retrosupport.emamsidecar.generate_sidecar_xml(
+            'DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', asset_xml_list, xml_path)
+
+    # Make directory
+        archival_media = args.save + "/" + "regular_archival"
+        os.makedirs(archival_media)
+
+    # move Files
+    for file in list_final:
+        source = file['file_path']
+        index = file['file_path'].rfind("/")
+        file_name = file['file_path'][index:]
+        dest = archival_media + file_name
+        os.rename(source, dest)
+
+
+
+    print("\n\n\tErrors:\n")
+    for error in list_errors:
+        print(error['asset_label'])
+        print("\t" + error['error'])
+
+
 
 
 if __name__ == "__main__":
