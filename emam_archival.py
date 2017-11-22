@@ -27,7 +27,7 @@ sys.setdefaultencoding('utf8')
 def set_argparse():
     # Start things off using pythons argparse. get user input and give help information
     parser = argparse.ArgumentParser(
-        description="Tracker Batch eMAM Downloader Version 1.0.1",
+        description="Tracker Batch eMAM Downloader Version 1.0.2",
         epilog="Please do not feed the Media Manager"
     )
 
@@ -337,17 +337,48 @@ def year_categories(year, decade, v=1):
     return category_paths
 
 
-# Put the meta data in a dictionary from the csv
+# Take copyright status and put in abbreviation
+def copyright_labler(text):
+    clean_text = retrosupport.process.filename_format(text)
+    if clean_text.lower() == "fair_use":
+        return "_FU"
+    elif clean_text.lower() == "fair_use_pending":
+        return "_FUP"
+    elif clean_text.lower() == "public_domain":
+        return "_PD"
+    elif clean_text.lower() == "public_domain_pending":
+        return "_PDPend"
+    elif clean_text.lower() == "royalty_free":
+        return "_RF"
+    elif clean_text.lower() == "license":
+        return "_Lic"
+    elif clean_text.lower() == "license_personal":
+        return "_LicPer"
+    else:
+        return ""
+
+
+        # Put the meta data in a dictionary from the csv
 def set_metadata(job, project_id, keywords, tracker_version, v=1):
 
-    # pad asset number
-    asset_number = retrosupport.process.pad_asset(job[0], v)
-    # parse date field
+
+    # put all the values needed for manipulation in variables.
     textdate = job[5]
+    decade = job[6]
+    asset_number = job[0]
+    source = job[1]
+    source_id = job[4]
+    copyright_holder = job[2]
+    copyright_status = job[3]
+    link = job[9]
+    # pad asset number
+    asset_number = retrosupport.process.pad_asset(asset_number, v)
+    # parse date field
+
     dictdate = retrosupport.process.parse_date(textdate)
     # find our year categories
-    if dictdate['year'] != "" or job[6] != "":
-        year_categories_list = year_categories(dictdate['year'], job[6])
+    if dictdate['year'] != "" or decade != "":
+        year_categories_list = year_categories(dictdate['year'], decade)
     else:
         year_categories_list = ["Archival/No-Date"]
     # Check keywords
@@ -358,16 +389,30 @@ def set_metadata(job, project_id, keywords, tracker_version, v=1):
     file_name = project_id + "_" + asset_number
     if dictdate['year'] != "":
         file_name = file_name + "_" + dictdate['year']
-    if dictdate['month'] != "":
-        file_name = file_name + "_" + dictdate['month']
-    if dictdate['day'] != "":
-        file_name = file_name + "_" + dictdate['day']
-    field = retrosupport.process.filename_format(job[1])   # Source
+        if dictdate['month'] != "":
+            file_name = file_name + "_" + dictdate['month']
+            if dictdate['day'] != "":
+                file_name = file_name + "_" + dictdate['day']
+
+    if "archive.org" in link.lower():
+        file_name = file_name + "_IA"
+        if copyright_holder != "":
+            file_name = file_name + "_" + retrosupport.process.filename_format(copyright_holder)
+    elif "tvnews.vanderbilt.edu" in link.lower():
+        file_name =file_name + "_Vandy"
+        if copyright_holder != "":
+            file_name = file_name + "_" + retrosupport.process.filename_format(copyright_holder)
+    else:
+        field = retrosupport.process.filename_format(source)   # Source
+        if field != "":
+            file_name = file_name + "_" + field
+    field = retrosupport.process.filename_format(source_id)   # Source ID
     if field != "":
         file_name = file_name + "_" + field
-    field = retrosupport.process.filename_format(job[4])   # Source ID
-    if field != "":
-        file_name = file_name + "_" + field
+
+    # Attach copyright status
+    copyright_label = copyright_labler(copyright_status)
+    file_name = file_name + copyright_label
 
     # A place to hold the dictionary titles in case of google sheet column re-arrangement. Date column is always skipped
     # asset_number source copy_holder copyright_status source_id decade description details link master_status
@@ -375,9 +420,10 @@ def set_metadata(job, project_id, keywords, tracker_version, v=1):
     # create our dictionary. A set for each version number of the tracker forms
 
     if tracker_version == "1.0":
-        metadata = {'asset_number': job[0], 'source': job[1], 'copy_holder': job[2], 'copyright_status': job[3],
-                    'source_id': job[4], 'decade': job[6], 'description': job[7],
-                    'details': retrosupport.process.clean_special_characters(job[8]), 'link': job[9],
+        metadata = {'asset_number': asset_number, 'source': source, 'copy_holder': copyright_holder,
+                    'copyright_status': copyright_status,
+                    'source_id': source_id, 'decade': decade, 'description': job[7],
+                    'details': retrosupport.process.clean_special_characters(job[8]), 'link': link,
                     'master_status': job[10], 'alerts': job[11], 'first_in': job[12],
                     'first_out': job[13], 'first_label': job[14], 'second_in': job[15],
                     'second_out': job[16], 'second_label': job[17],
@@ -422,13 +468,21 @@ def excel(jobs, csv_path, errors, v=1):
 
     # Create the workbook and sheet
     workbook = xlsxwriter.Workbook(file_location)
-    workbook.set_size(1350, 1800)
+    workbook.set_size(1350, 2000)
     worksheet = workbook.add_worksheet('Retro Report')
 
     # Formatting
     header_format = workbook.add_format({
         'bold': True,
         'align': 'center',
+        'border': 6,
+        'font_size': 20,
+        'valign': 'vcenter'
+    })
+
+    link_header_format = workbook.add_format({
+        'bold': True,
+        'align': 'left',
         'border': 6,
         'font_size': 20,
         'valign': 'vcenter'
@@ -471,6 +525,11 @@ def excel(jobs, csv_path, errors, v=1):
         'align': 'center',
     })
 
+    link_format = workbook.add_format({
+        'font_size': 12,
+        'align': 'left',
+    })
+
     asset_fail_format = workbook.add_format({
         'font_size': 14,
         'font_color': 'red',
@@ -478,7 +537,7 @@ def excel(jobs, csv_path, errors, v=1):
     })
 
     # Make all the headers
-    worksheet.merge_range('A1:K1', 'Retro eMAM Auto Downloader Report', merge_format)
+    worksheet.merge_range('A1:L1', 'Retro eMAM Auto Downloader Report', merge_format)
     worksheet.write('A2', 'Asset', header_format)
     worksheet.write('B2', '', header_format)
     worksheet.write('C2', 'File Name', header_format)
@@ -490,6 +549,8 @@ def excel(jobs, csv_path, errors, v=1):
     worksheet.write('I2', 'Re', header_format)
     worksheet.write('J2', '', header_format)
     worksheet.write('K2', 'Error', header_format)
+    worksheet.write('L2', '', header_format)
+    worksheet.write('M2', '  Link', link_header_format)
 
     # Adjust column widths
     worksheet.set_column(0, 0, 9)
@@ -503,6 +564,8 @@ def excel(jobs, csv_path, errors, v=1):
     worksheet.set_column(8, 8, 8)
     worksheet.set_column(9, 9, 1)
     worksheet.set_column(10, 10, 10)
+    worksheet.set_column(11, 11, 1)
+    worksheet.set_column(12, 12, 200)
 
     # Adjust row widths
     worksheet.set_row(0, 70)
@@ -529,12 +592,13 @@ def excel(jobs, csv_path, errors, v=1):
                 worksheet.write(row, 10, job['error'], download_fail_format)
         else:
             worksheet.write(row, 0, job['asset_number'], asset_fail_format)
-            worksheet.write(row, 2, job['file_name'], file_name_fail_format)
+            worksheet.write(row, 2, job['file_name_ext'], file_name_fail_format)
             worksheet.write(row, 4, 'NO!', download_fail_format)
             worksheet.write(row, 6, job['screener'], asset_success_format)
             worksheet.write(row, 8, 'No', download_success_format)
             if job['error'] != "":
                 worksheet.write(row, 10, job['error'], download_fail_format)
+            worksheet.write(row, 12, job['link'], link_format)
 
         row = row + 1
     row = row + 1
@@ -669,14 +733,17 @@ def post_download(job, rough_screener_path, v=1):
             else:
                 job['screener'] = False
 
-    # check to see if we need to rename a getty extension
-    if "gettyimages.com" in job['link']:
-        if "unknown_video" in job['file_name_ext']:
-            new_location = string.replace(job['location'], "unknown_video", "mp4")  # replace with mp4 extension
-            if not os.path.isfile(new_location):    # just in case for some reason file already exists
-                os.rename(job['location'], new_location)
-            job['location'] = new_location
-            job['file_name_ext'] = string.replace(job['file_name_ext'], "unknown_video", "mp4")
+    # check to see if we need to rename a extension that is supposed to be mp4
+    mp4_sites = ["gettyimages.com", "shutterstock.com"]
+
+    for site in mp4_sites:
+        if site in job['link'].lower():
+            if "unknown_video" in job['file_name_ext']:
+                new_location = string.replace(job['location'], "unknown_video", "mp4")  # replace with mp4 extension
+                if not os.path.isfile(new_location):    # just in case for some reason file already exists
+                    os.rename(job['location'], new_location)
+                job['location'] = new_location
+                job['file_name_ext'] = string.replace(job['file_name_ext'], "unknown_video", "mp4")
 
     # check to see if we need to re encode video
     encode_list = ["mkv", "webm", "wmv"]
@@ -769,7 +836,6 @@ def download_check(job, force_skip, v=1):
         message = "Asset has no link. Adding to future download list"
     else:
         web_url = ["archive.org", "vanderbilt.edu"]
-        #web_url = ['zzzz.zzz']
         for url in web_url:
             if url in job['link']:
                 answer = False
@@ -781,17 +847,17 @@ def download_check(job, force_skip, v=1):
     return pack
 
 
-def choose_extension(url, ext):
+def choose_extension(job, ext):
 
-    if "archive.org" in url:
+    if "archive.org" in job['link']:
         return ".mp4"
-    elif "aparchive.com" in url:
+    elif "aparchive.com" in ['link']:
         return ".mp4"
-    elif "gettyimages.com" in url:
+    elif "gettyimages.com" in ['link']:
         return ".mp4"
-    elif "archives.gov" in url:
+    elif "archives.gov" in ['link']:
         return ".mp4"
-    elif "vanderbilt.edu" in url:
+    elif "vanderbilt.edu" in ['link'] or "vanderbilt" in job['source'].lower():
         return ".mpg"
     else:
         if ext[0] == ".":
@@ -831,7 +897,7 @@ def main():
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
         index = csv_path.rfind("/") + 1
         log_path = csv_path[:index] + "emam_log_" + tstamp + "_.txt"
-        print("Verbsity set to 3 or greater. Generating log file at: " + log_path)
+        print("Verbosity set to 3 or greater. Generating log file at: " + log_path)
         f = open(log_path, str('w+'))
         f.write(str("log opened " + tstamp))
         f.write(str("\n\nUser Input:\n"))
@@ -1128,8 +1194,6 @@ def main():
                     if verbosity >= 3:
                         f.write(str(message))
 
-    excel(processed_jobs, csv_path, errors, verbosity)
-
     # Split the list in two. One for downloaded assets and one for all others
     downloaded_jobs = []    # holds the assets that we have ready
     future_import_jobs = []  # holds the assets for a separate xml file that will be used for batch import in the future
@@ -1179,7 +1243,7 @@ def main():
                 job['file_name_ext'] = job['file_name'] + extension   # Mov's are most likely extension
         else:
             for job in future_import_jobs:
-                job['file_name_ext'] = job['file_name'] + choose_extension(job['link'], extension)
+                job['file_name_ext'] = job['file_name'] + choose_extension(job, extension)
 
         # format our metadata
         future_job_xml_list = retrosupport.process.emam_metadata_format(future_import_jobs, categories, retrosupport.
@@ -1196,7 +1260,8 @@ def main():
             location = csv_path[:index] + "future_sidecar_" + tstamp + ".xml"
         retrosupport.emamsidecar.generate_sidecar_xml('DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d'
                                                       , future_job_xml_list, location)
-
+    # Make spreadsheet report
+    excel(processed_jobs, csv_path, errors, verbosity)
     if verbosity >= 3:
         tstamp = time.strftime("%Y_%m_%d_T_%H_%M")  # hold thr current date and time
         message = "Closing log " + tstamp

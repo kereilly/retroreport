@@ -47,6 +47,8 @@ def set_argparse():
 
     parser.add_argument("-o", "--xml_ingest", type=int, choices=[2, 3, 5], help="Raid location usage")
 
+    parser.add_argument("-g", "--go", action="store_true", help="Make the xmls and move the files")
+
 
     # have argparse do its thing
     args = parser.parse_args()
@@ -112,7 +114,7 @@ def set_metadata(local_file, path, project_id, v=1):
     dict_temp = {'file_name': local_file, 'file_path': path, 'asset_number': "", 'source': "", 'source_id': "",
                  'description': "", 'link': "", 'dict_date': {'year': "", 'month': "", 'day': "", 'decade': ""},
                  'project_id': project_id, 'keywords': "", 'copy_holder': "", 'file_name_ext': "", 'details': "",
-                 'year_categories_list': year_categories_list, 'alerts': "", 'decade': "",
+                 'year_categories_list': year_categories_list, 'decade': "",
                  'master_status': "", 'alerts': "", 'first_in': "",
                  'first_out': "", 'first_label': "", 'second_in': "",
                  'second_out': "", 'second_label': ""}
@@ -156,12 +158,19 @@ def sort_list(list_to_sort, v=1):
         for item in sublist:
             if "master" in item['file_name'].lower() or "trimmed" in item['file_name'].lower():
                 unique = False
+            pt_index = len(item['file_name']) / 2
+
+            if "pt" in item['file_name'][pt_index:].lower():
+                unique = True
+
         if unique:
             compare_text = ""
             first_time = True
+            pt_id = False
             levenshtein_int = 0
             for item in sublist:
                 index = item['file_name'].rfind(".")
+
                 if first_time:
                     compare_text = item['file_name'][:index]
                     first_time = False
@@ -169,7 +178,13 @@ def sort_list(list_to_sort, v=1):
                     text = item['file_name'][:index]
                     compared = editdistance.eval(compare_text, text)
                     levenshtein_int = levenshtein_int + levenshtein(compared)
-            if levenshtein_int > 6:
+
+                pt_index = len(item['file_name']) / 2
+                if "pt" in item['file_name'][pt_index:].lower():
+                    pt_id = True
+            if pt_id:
+                unique = True
+            elif levenshtein_int > 6:
                 unique = True
             else:
                 unique = False
@@ -227,7 +242,7 @@ def choose_file(asset_list, v=1):
     # now it gets more complicated. Favor files smaller in size unless they have undesirable extensions.
 
     # Add value for bad extensions, get file size
-    undesirable_formats = ["webm", "mkv", "wmv"]
+    undesirable_formats = ["webm", "mkv", "wmv", "flv"]
     for media_file in asset_list:
         for extension in undesirable_formats:
             if extension in media_file['file_name']:
@@ -553,7 +568,7 @@ def get_description(item, multi=False):
         pattern = re.compile("IA", re.IGNORECASE)
         description = pattern.sub("", description)
     description = description.replace("_", " ")
-    description = description.replace(item['copyright'], "")
+    description = description.replace(item['copy_holder'], "")
     pattern = re.compile("screener", re.IGNORECASE)
     description = pattern.sub("", description)
     pattern = re.compile("master", re.IGNORECASE)
@@ -732,7 +747,7 @@ def main():
     # set up our regular expression match
     pattern_archival = re.compile('RR[1-3]\d\d_A\d+', re.IGNORECASE)  # looks for beginning of asset label pattern
     pattern_vandy = re.compile('RR[1-3]\d\d_[1-2]\d\d\d_\d\d_[0-3]\d_[a-z][a-z][a-z]_A\d+', re.IGNORECASE)  # matches vandy pattern
-    pattern_asset_num = re.compile('_A\d{1,3}[_|.]', re.IGNORECASE)
+    pattern_asset_num = re.compile('_A\d{1,3}[_|.| ]', re.IGNORECASE)
     pattern_date = re.compile('[_|.][1-2]\d\d\d[.|_]\d{1,2}[.|_][0-3]\d[.|_]')
     pattern_year = re.compile('[.|_][1-2]\d\d\d[.|_]')
     pattern_year_month = re.compile('[.|_][1-2]\d\d\d[.|_][0-1]\d[.|_]')
@@ -770,7 +785,6 @@ def main():
 
     #  Based on retro report naming convention find all the media files
     for media_file in list_first_pass:
-
         # standard archival match
         if pattern_archival.match(media_file['file_name']):
             # get our asset number
@@ -889,8 +903,11 @@ def main():
 
         if len(item) < 6:
             # Not enough elements in this entry. add to errors
-            item['error'] = "Not enough elements in tracker"
-            list_errors.append(item)
+            entry = {}
+            entry['error'] = "Not enough elements in tracker"
+            entry['asset_label'] = ""
+            entry['csv_line'] = item
+            list_errors.append(entry)
         else:
             tracker_info = tracker_dict(item)
             re_match = pattern_asset_num.search(tracker_info['asset_label'])
@@ -907,8 +924,9 @@ def main():
                 list_tracker_sheet.append(tracker_info)
 
             else:  # add item to error list because we could not find asset number in label
-                item['error'] = "No Asset number found; tracker"
-                list_errors.append(item)
+                entry = {'error': "No Asset number found; tracker", 'csv_line': item}
+                entry ['asset_label'] = ""
+                list_errors.append(entry)
 
     # extract Dates from our new tracker list
     # date from label first
@@ -978,9 +996,9 @@ def main():
                 temp_media_file = media_file
         if match:
             temp_media_file['source'] = tracker_entry['source']
-            temp_media_file['copyright'] = tracker_entry['Copyright']
+            temp_media_file['copy_holder'] = tracker_entry['Copyright']
             temp_media_file['link'] = tracker_entry['link']
-            temp_media_file['alerts'] = tracker_entry['notes']
+            temp_media_file['alerts'] = retrosupport.process.clean_special_characters(tracker_entry['notes'])
             temp_media_file['asset_label'] = tracker_entry['asset_label']
             temp_media_file['asset_number'] = str(temp_media_file['asset_number'])
             temp_media_file['dict_date'] = final_date(temp_media_file['dict_date'], tracker_entry['label_dict_date'],
@@ -988,7 +1006,10 @@ def main():
             temp_media_file['date_pattern'] = tracker_entry['date_pattern']
             temp_media_file['description'] = get_description(temp_media_file)
             # grab source ID
-            pattern_id = re.compile(' \d\d\d\d\d+')
+            if "itn" in temp_media_file['source'].lower():
+                pattern_id = re.compile(' \D\D\D\d\d\d\d\d+')
+            else:
+                pattern_id = re.compile(' \d\d\d\d\d+')
             re_match = pattern_id.search(temp_media_file['description'])  # Date Euro format
             if re_match is not None:
                 temp_media_file['source_id'] = re_match.group(0)
@@ -1020,18 +1041,12 @@ def main():
             print ("\t Asset Label: " + item['asset_label'])
             print ("\t File Path: " + item['file_path'])
             print ("\t year Category: " + str(item['year_categories_list']))
-            print ("\t Copyright: " + item['copyright'])
+            print ("\t Copyright: " + item['copy_holder'])
             print ("\t Source: " + item['source'])
             print ("\t Source ID: " + item['source_id'])
             print ("\t Date: " + str(item['dict_date']))
             print ("\t Description: " + item['description'])
             print ("")
-    if v >= 4:
-        print ("\nErrors:")
-        for error in list_errors:
-            print ("\nError Description: " + error['error'])
-            for key, value in error.iteritems():
-                print ("\t" + str(key) + ": " + str(value))
 
     if len(list_vanderbilt) > 0:
         pattern_vandy_date = re.compile('_[1-2]\d\d\d_[0|1]\d_[0-3]\d')
@@ -1060,7 +1075,7 @@ def main():
         for media_file in list_multiple_unique:
             if media_file['asset_number'] == tracker_entry['asset_number']:
                 media_file['source'] = tracker_entry['source']
-                media_file['copyright'] = tracker_entry['Copyright']
+                media_file['copy_holder'] = tracker_entry['Copyright']
                 media_file['link'] = tracker_entry['link']
                 media_file['alerts'] = tracker_entry['notes']
                 media_file['asset_label'] = tracker_entry['asset_label']
@@ -1088,7 +1103,7 @@ def main():
             print ("\t Asset Label: " + item['asset_label'])
             print ("\t File Path: " + item['file_path'])
             print ("\t year Category: " + str(item['year_categories_list']))
-            print ("\t Copyright: " + item['copyright'])
+            print ("\t Copyright: " + item['copy_holder'])
             print ("\t Source: " + item['source'])
             print ("\t Source ID: " + item['source_id'])
             print ("\t Date: " + str(item['dict_date']))
@@ -1106,11 +1121,12 @@ def main():
             print ("\t Source: " + item['source'])
             print ("\t Source ID: " + item['source_id'])
             print ("\t Date: " + str(item['dict_date']))
+            print ("\t Copyright: " + item['copy_holder'])
             print ("\t Description: " + item['description'])
             print ("")
 
     #  Finish up vandy media
-    if len(list_vanderbilt) > 0:
+    if len(list_vanderbilt) > 0 and args.go:
         # Get the xml ready for vanderbilt
         xml_path = args.save + "/" + project_id + '_sidecar_Vanderbilt.xml'
         asset_xml_list = retrosupport.process.emam_metadata_format(list_vanderbilt, categories,
@@ -1134,7 +1150,7 @@ def main():
 
 
         # Finish off muilti file list
-    if len(list_multiple_unique_final) > 0:
+    if len(list_multiple_unique_final) > 0 and args.go:
         # Get the xml ready for multi file for single asset
         xml_path = args.save + "/" + project_id + '_sidecar_Multi_File.xml'
         asset_xml_list = retrosupport.process.emam_metadata_format(list_multiple_unique_final, categories,
@@ -1157,7 +1173,7 @@ def main():
             os.rename(source, dest)
 
    #  Finish up archival media
-    if len(list_final) > 0:
+    if len(list_final) > 0 and args.go:
         # Get the xml ready for archival media
         xml_path = args.save + "/" + project_id + '_sidecar_regular_archival.xml'
         asset_xml_list = retrosupport.process.emam_metadata_format(list_final, categories,
@@ -1171,20 +1187,25 @@ def main():
         archival_media = args.save + "/" + "regular_archival"
         os.makedirs(archival_media)
 
-    # move Files
-    for file in list_final:
-        source = file['file_path']
-        index = file['file_path'].rfind("/")
-        file_name = file['file_path'][index:]
-        dest = archival_media + file_name
-        os.rename(source, dest)
+        # move Files
+        for file in list_final:
+            source = file['file_path']
+            index = file['file_path'].rfind("/")
+            file_name = file['file_path'][index:]
+            dest = archival_media + file_name
+            os.rename(source, dest)
 
 
 
     print("\n\n\tErrors:\n")
     for error in list_errors:
-        print(error['asset_label'])
+        if error['asset_label'] != "":
+            print(error['asset_label'])
+        else:
+            print("No Asset Label")
         print("\t" + error['error'])
+        for key, value in error.iteritems():
+            print ("\t" + str(key) + ": " + str(value))
 
 
 

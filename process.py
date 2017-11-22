@@ -295,8 +295,15 @@ def emam_metadata_format(jobs, categories, asset_type, path="xml_ingest3"):
     for job in jobs:
         # Asset information
         asset = Asset()
-        asset.title = job['file_name']
-        asset.description = job['description']
+        if job['file_name'] is not None and job['file_name'] != "":
+            asset.title = job['file_name']
+        else:
+            asset.title = "unknown"
+        if job['description'] is not None and job['description'] != "":
+            asset.description = job['description']
+        else:
+            asset.description = job['description']
+        # The next 4 aren't checked. These cannot be unknown
         asset.file_name = job['file_name_ext']
         asset.file_path = path
         asset.file_action = FileAction.MOVE
@@ -306,21 +313,34 @@ def emam_metadata_format(jobs, categories, asset_type, path="xml_ingest3"):
         custom_metadata = []
         if asset_type == SideCarType.tracker:
             # Mandatory fields
+            asset.custom_metadata_set = 'CUST_SET_AST_ARCHIVAL MEDIA_22'
             metadata = CustomMetadata()  # Set metadata as CustomMetadata object
             metadata.standard_id = 'CUST_FLD_ASSET LABEL_13'    # Add the id for metadata field
-            metadata.value = job['file_name']       # Add the value of the field
+            if job['file_name'] is not None and job['file_name'] != "":
+                metadata.value = job['file_name']       # Add the value of the field
+            else:
+                metadata.value = "unknown"
             custom_metadata.append(metadata)    # append metadata to the list
             metadata = CustomMetadata()     # reset custom metadata object
             metadata.standard_id = 'CUST_FLD_ASSET NUMBER_25'
-            metadata.value = job['asset_number']
+            if job['asset_number'] is not None and job['asset_number'] != "":
+                metadata.value = job['asset_number']
+            else:
+                metadata.value = "unKnown"
             custom_metadata.append(metadata)
             metadata = CustomMetadata()
             metadata.standard_id = 'CUST_FLD_SOURCE_17'
-            metadata.value = job['source']
+            if job['source'] is not None and job['source'] != "":
+                metadata.value = job['source']
+            else:
+                metadata.value = "unknown"
             custom_metadata.append(metadata)
             metadata = CustomMetadata()
             metadata.standard_id = 'CUST_FLD_PROJECT ID_29'
-            metadata.value = job['project_id']
+            if job['project_id'] is not None and job['project_id'] != "":
+                metadata.value = job['project_id']
+            else:
+                metadata.value = "unknown"
             custom_metadata.append(metadata)
             metadata = CustomMetadata()
             metadata.standard_id = 'CUST_FLD_IS ARCHIVAL_39'
@@ -328,72 +348,80 @@ def emam_metadata_format(jobs, categories, asset_type, path="xml_ingest3"):
             custom_metadata.append(metadata)
 
             # Non mandatory fields
-            if job['source_id'] != "":
+            if job['source_id'] != "" and job['source_id'] is not None:
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_SOURCE ID_18'
                 metadata.value = job['source_id']
                 custom_metadata.append(metadata)
-            if job['details'] != "":
+            if job['details'] != "" and job['details'] is not None:
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_DESCRIPTION_19'
                 metadata.value = job['details']
                 custom_metadata.append(metadata)
-            if job['link'] != "":
+            if job['link'] != "" and job['link'] is not None:
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_LINK_20'
                 metadata.value = job['link']
                 custom_metadata.append(metadata)
-            if job['alerts'] != "":
+            if job['alerts'] != "" and job['alerts'] is not None:
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_NOTES_32'
                 metadata.value = job['alerts']
                 custom_metadata.append(metadata)
-            if job['decade'] != "":
+            if job['decade'] != "" and job['decade'] is not None:
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_DECADE_42'
                 metadata.value = job['decade']
                 custom_metadata.append(metadata)
-            if job['keywords'] != "":
+            if job['keywords'] != "" and job['keywords'] is not None:
                 metadata = CustomMetadata()
                 metadata.standard_id = 'CUST_FLD_KEYWORDS_38'
                 metadata.value = job['keywords']
                 custom_metadata.append(metadata)
+            if job['copy_holder'] != "" and job['copy_holder'] is not None:
+                metadata = CustomMetadata()
+                metadata.standard_id = 'CUST_FLD_COPYRIGHT/SOURCE OWNER_21'
+                metadata.value = job['copy_holder']
+                custom_metadata.append(metadata)
+
+
 
         if asset_type == SideCarType.vandy:
             print ("Do nothing right now")
 
         #  Extract date
         dict_date = job['date']
-        if dict_date['year'] != "":  # use the year as the condition if a date is present
+        if dict_date['year'] != "" and dict_date['year'] is not None:  # use the year as the condition if a date is present
             metadata = CustomMetadata()
             metadata.standard_id = 'CUST_FLD_DATE_5'
             date = dict_date['year']
-            if dict_date['month'] != "":    # test if month is present
+            if dict_date['month'] != "" and dict_date['month'] is not None:    # test if month is present
                 date = date + "-" + dict_date['month']
-            if dict_date['day'] != "":
+            if dict_date['day'] != "" and dict_date['day'] is not None:
                 date = date + "-" + dict_date['day']
             metadata.value = date
             custom_metadata.append(metadata)
 
         # apply subclips
-        if job['first_label'] != "" or job['second_label'] != "":   # check to see if we have subclips
-            subclips = []                                           # in & out points must be clean
-            subclip = Subclip()
-            # first subclip
-            if job['first_label'] != "":
-                subclip.name = job['first_label']
-                subclip.start_time = job['first_in']
-                subclip.end_time = job['first_out']
-                subclips.append(subclip)
-            # second subclip
-            if job['second_label'] != "":
+        if job['first_label'] is not None or job['second_label'] is not None:   # check to see if we have subclips
+            if job['first_label'] != "" or job['second_label'] != "":         # in & out points must be clean
+                subclips = []
                 subclip = Subclip()
-                subclip.name = job['second_label']
-                subclip.start_time = job['second_in']
-                subclip.end_time = job['second_out']
-                subclips.append(subclip)
-            # apply subclips
-            asset.subclips = subclips
+                # first subclip
+                if job['first_label'] != "":
+                    subclip.name = job['first_label']
+                    subclip.start_time = job['first_in']
+                    subclip.end_time = job['first_out']
+                    subclips.append(subclip)
+                # second subclip
+                if job['second_label'] != "":
+                    subclip = Subclip()
+                    subclip.name = job['second_label']
+                    subclip.start_time = job['second_in']
+                    subclip.end_time = job['second_out']
+                    subclips.append(subclip)
+                # apply subclips
+                asset.subclips = subclips
 
         # load meta data into asset
         asset.custom_metadata = custom_metadata
