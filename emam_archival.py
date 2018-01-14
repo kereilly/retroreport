@@ -881,6 +881,7 @@ def choose_extension(job, ext):
 def get_category(csv_dump, args, f, v=1):
 
     # check the project ID
+    project_id = "$$ProjectID"
     if args.project_id is None:
         project_id = csv_dump[0][1]  # extract the project ID number
         if v >= 2:
@@ -907,28 +908,90 @@ def get_category(csv_dump, args, f, v=1):
                 f.close()
         exit()
 
-# Figure out the main category
-    if csv_dump[0][2] != "" and csv_dump[0][3] != "":
-        categories.append(csv_dump[0][3] + "/" + project_id + " " + csv_dump[0][2] + "/" + csv_dump[0][4])
-        if verbosity >= 2:
-            message = ""
-            for category in categories:
-                message = message + " " + category
-            message = "Category path(s): " + categories
-            print (message)
+    # Story Type
+    story_type = "$$StoryType"
+    if args.story_type is None:
+        story_type = csv_dump[0][3]  # extract the story type
+        if v >= 2:
+            print ("Using google sheet provided story type: " + story_type)
             if verbosity >= 3:
-                f.write(str("Google sheet provided "))
-                f.write(str(message))
+                f.write(str("Using Google Sheet provided Story Type: "))
+                f.write(str(story_type))
                 f.write(str("\n"))
     else:
-        if verbosity >= 1:
-            print ("No category defined\n Will not go on")
-            print ("You must define a category")
-            if verbosity >= 3:
-                f.write(str("Google Sheet failed to provide the category path\n"))
-                f.write(str("program will exit"))
+        story_type = args.story_type
+        if v >= 2:
+            print ("Using user provided provided project id: " + story_type)
+            if v >= 3:
+                f.write(str("Using User provided Story Type: "))
+                f.write(str(story_type))
+                f.write(str("\n"))
+
+    if story_type == "$$StoryType":
+        if v >= 1:
+            print ("The Google Sheet JavaScript did not provide a Story Type")
+            print ("Specify your own Story Type with the -t flag. Downloader will not continue")
+            if v >= 3:
+                f.write(str("Google Sheet failed to provide story type. Program will Exit"))
                 f.close()
         exit()
+
+    # check the working title
+    story_name = "$$WorkingTitle"
+    if args.working_title is None:
+        story_name = csv_dump[0][2]  # extract the working title
+        if v >= 2:
+            print ("Using google sheet provided working title: " + story_name)
+            if verbosity >= 3:
+                f.write(str("Using Google Sheet provided Working Title: "))
+                f.write(str(story_name))
+                f.write(str("\n"))
+    else:
+        story_name = args.working_title
+        if v >= 2:
+            print ("Using user provided provided working title: " + story_name)
+            if v >= 3:
+                f.write(str("Using User provided Working Title: "))
+                f.write(str(story_name))
+                f.write(str("\n"))
+
+    if story_name == "$$WorkingTitle":
+        if v >= 1:
+            print ("The Google Sheet JavaScript did not provide a Working Title")
+            print ("Specify your own project ID with the -n flag. Downloader will not continue")
+            if v >= 3:
+                f.write(str("Google Sheet failed to provide a working title. Program will Exit"))
+                f.close()
+        exit()
+
+    # check the archival location
+    archival_location = ""
+    if args.archival_location is None:
+        project_id = csv_dump[0][4]  # extract the project ID number
+    else:
+        archival_location = args.archival_location
+        if v >= 2:
+            print ("Using user provided provided archival location: " + archival_location)
+            if v >= 3:
+                f.write(str("Using User provided archival location: "))
+                f.write(str(archival_location))
+                f.write(str("\n"))
+
+    if archival_location == "":
+        if v >= 1:
+            print ("The Google Sheet JavaScript did not provide an archival location")
+            print ("Specify your own archival location within the story category"
+                   " with the -a flag. Downloader will not continue")
+            if v >= 3:
+                f.write(str("Google Sheet failed to provide an archival location. Program will Exit"))
+                f.close()
+        exit()
+
+    # put together main category
+    if csv_dump[0][2] != "" and csv_dump[0][3] != "":
+        category = story_type + "/" + project_id + "/" + story_name + "/" + archival_location
+        return category
+
 
 def main():
 
@@ -978,11 +1041,15 @@ def main():
     tracker_version = csv_dump[0][0]    # the all important tracker version so the right columns get
     # the correct meta data assignment
 
+    # get our categories
+    categories = []
     # Figure out main eMAM category
-    main_category = get_category(csv_dump, args, f, verbosity)
+    if verbosity >= 3:
+        main_category = get_category(csv_dump, args, f, verbosity)
+    else:
+        main_category = get_category(csv_dump, args, "f", verbosity)    # if verbosity is not 3 f doesn't exists
 
     # Grab the eMAM category for assets
-    categories = []
     if args.category is not None:
         if args.category != "":
             categories.append(args.category)
