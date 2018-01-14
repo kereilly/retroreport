@@ -242,7 +242,7 @@ def choose_file(asset_list, v=1):
     # now it gets more complicated. Favor files smaller in size unless they have undesirable extensions.
 
     # Add value for bad extensions, get file size
-    undesirable_formats = ["webm", "mkv", "wmv", "flv"]
+    undesirable_formats = ["webm", "mkv", "wmv", "flv", "webm", "pek"]
     for media_file in asset_list:
         for extension in undesirable_formats:
             if extension in media_file['file_name']:
@@ -344,7 +344,7 @@ def csv_process(path, v=1):
     # Open the csv file to work on
     if v >= 3:
         print ("Attempting to open csv file at: " + path)
-    csv_file = process.open_file(path, "r")
+    csv_file = process.open_file(path, "rU")
 
     if csv_file == retrosupport.process.volume_result.not_found:
         print ("No file found at: " + path)
@@ -374,7 +374,19 @@ def csv_process(path, v=1):
 
 def tracker_dict(item):
 
-    dicts = {'source': item[0], 'Copyright': item[1], 'asset_label': item[2], 'date': item[3], 'notes': item[4],
+    # clean up source for various characters that cause problems:
+    source = retrosupport.process.clean_latin1(item[0])
+    source = retrosupport.process.clean_special_characters(source)
+    copyright = retrosupport.process.clean_latin1(item[1])
+    copyright = retrosupport.process.clean_special_characters(copyright)
+    asset_label = retrosupport.process.clean_latin1(item[2])
+    asset_label = retrosupport.process.clean_special_characters(asset_label)
+    date = retrosupport.process.clean_latin1(item[3])
+    date = retrosupport.process.clean_special_characters(date)
+    notes = retrosupport.process.clean_latin1(item[4])
+    notes = retrosupport.process.clean_special_characters(notes)
+
+    dicts = {'source': source, 'Copyright': copyright, 'asset_label': asset_label, 'date': date, 'notes': notes,
              'link': item[5], 'decade': "", 'date_pattern': "",
              'label_dict_date': {'year': "", 'month': "", 'day': ""},  # store date from label
              'field_dict_date': {'year': "", 'month': "", 'day': ""}}  # store date from field
@@ -488,29 +500,29 @@ def year_categories(year, decade, v=1):
 
     # take care of decade
     elif decade != "":
-        if "1920" in decade:
+        if "1920s" in decade:
             category_paths.append("Archival/1920-1929-Decade")
-        if "1930" in decade:
+        if "1930s" in decade:
             category_paths.append("Archival/1930-1939-Decade")
-        if "1940" in decade:
+        if "1940s" in decade:
             category_paths.append("Archival/1940-1949/Decade")
-        if "1950" in decade:
+        if "1950s" in decade:
             category_paths.append("Archival/1950-1959/Decade")
-        if "1960" in decade:
+        if "1960s" in decade:
             category_paths.append("Archival/1960-1969/Decade")
-        if "1970" in decade:
+        if "1970s" in decade:
             category_paths.append("Archival/1970-1979/Decade")
-        if "1980" in decade:
+        if "1980s" in decade:
             category_paths.append("Archival/1980-1989/Decade")
-        if "1990" in decade:
+        if "1990s" in decade:
             category_paths.append("Archival/1990-1999/Decade")
-        if "2000" in decade:
+        if "2000s" in decade:
             category_paths.append("Archival/2000-2009/Decade")
-        if "2010" in decade:
+        if "2010s" in decade:
             category_paths.append("Archival/2010-2019/Decade")
-        if "2020" in decade:
+        if "2020s" in decade:
             category_paths.append("Archival/2020-2029/Decade")
-        if "2030" in decade:
+        if "2030s" in decade:
             category_paths.append("Archival/2030-2039/Decade")
     else:
         if v >= 3:
@@ -780,7 +792,7 @@ def main():
         if unknown_file['file_name'][0] != ".":  # This is not a hidden file.
             if os.path.isfile(unknown_file['file_path']):
                 file_size = os.path.getsize(unknown_file['file_path'])
-                if file_size > 2032933:  # we only want files 2MB and up
+                if file_size > 1032933:  # we only want files 1MB and up
                     list_first_pass.append(unknown_file)
 
     #  Based on retro report naming convention find all the media files
@@ -925,7 +937,7 @@ def main():
 
             else:  # add item to error list because we could not find asset number in label
                 entry = {'error': "No Asset number found; tracker", 'csv_line': item}
-                entry ['asset_label'] = ""
+                entry['asset_label'] = ""
                 list_errors.append(entry)
 
     # extract Dates from our new tracker list
@@ -943,7 +955,7 @@ def main():
             else:
                 re_match = pattern_date_euro.search(tracker_entry['asset_label'])  # Date Euro format
                 if re_match is not None:
-                    tracker_entry['label_dict_date'] = get_date(re_match.group(0), "normal")
+                    tracker_entry['label_dict_date'] = get_date(re_match.group(0), "euro")
                     tracker_entry['date_pattern'] = re_match.group(0)
                 else:
                     re_match = pattern_year_month_euro.search(tracker_entry['asset_label'])  # Euro format year month
@@ -1008,20 +1020,34 @@ def main():
             # grab source ID
             if "itn" in temp_media_file['source'].lower():
                 pattern_id = re.compile(' \D\D\D\d\d\d\d\d+')
+            elif temp_media_file['source'].lower() == "ap":
+                pattern_id = re.compile('\D\D\D\D\d\d\d\d\d+')
+            elif temp_media_file['source'].lower() == "getty":
+                pattern_id = re.compile('\d\d\d\d \d\d\d')
             else:
                 pattern_id = re.compile(' \d\d\d\d\d+')
-            re_match = pattern_id.search(temp_media_file['description'])  # Date Euro format
+            re_match = pattern_id.search(temp_media_file['description'])
             if re_match is not None:
                 temp_media_file['source_id'] = re_match.group(0)
                 source_id = re_match.group(0)
                 pattern = re.compile(source_id, re.IGNORECASE)
                 temp_media_file['description'] = pattern.sub("", temp_media_file['description'])
+            # run the match again in case it went to a specialty site
+            else:
+                pattern_id = re.compile(' (\D)?(\D)?\d\d\d\d\d+')
+                re_match = pattern_id.search(temp_media_file['description'])
+                if re_match is not None:
+                    temp_media_file['source_id'] = re_match.group(0)
+                    source_id = re_match.group(0)
+                    pattern = re.compile(source_id, re.IGNORECASE)
+                    temp_media_file['description'] = pattern.sub("", temp_media_file['description'])
             # fix file names for xml ingest
             index = str.rfind(temp_media_file['file_path'], '/') + 1
             temp_media_file['file_name_ext'] = temp_media_file['file_path'][index:]
             index = str.rfind(temp_media_file['file_name'], '.')
             temp_media_file['file_name'] = temp_media_file['file_name'][:index]
-            temp_media_file['year_categories_list'] = year_categories(temp_media_file['dict_date']['year'], "")
+            temp_media_file['year_categories_list'] = year_categories(temp_media_file['dict_date']['year'],
+                                                                      tracker_entry['date'])
             temp_media_file['date'] = temp_media_file['dict_date']
             list_final.append(temp_media_file)
         if not match:
@@ -1067,7 +1093,7 @@ def main():
             item['file_name'] = item['file_name'][:index]
             item['date'] = item['dict_date']
             item['asset_number'] = str(item['asset_number'])
-            item['year_categories_list'] = year_categories(item['dict_date']['year'], "")
+            item['year_categories_list'] = year_categories(item['dict_date']['year'], tracker_entry['date'])
 
     # get the files with multiple entries   list_multiple_unique
     list_multiple_unique_final = []
@@ -1148,8 +1174,7 @@ def main():
             dest = vanderbilt_media + file_name
             os.rename(source, dest)
 
-
-        # Finish off muilti file list
+    # Finish off muilti file list
     if len(list_multiple_unique_final) > 0 and args.go:
         # Get the xml ready for multi file for single asset
         xml_path = args.save + "/" + project_id + '_sidecar_Multi_File.xml'
@@ -1172,22 +1197,59 @@ def main():
             dest = multiple_media + file_name
             os.rename(source, dest)
 
-   #  Finish up archival media
+    # Finish up archival media
     if len(list_final) > 0 and args.go:
         # Get the xml ready for archival media
         xml_path = args.save + "/" + project_id + '_sidecar_regular_archival.xml'
         asset_xml_list = retrosupport.process.emam_metadata_format(list_final, categories,
                                                                    retrosupport.process.SideCarType.tracker,
-                                                                   xml_ingest)
+                                                                    xml_ingest)
+
+        if v >= 3:
+            file_path = xml_path + ".log.txt"
+            f = open(file_path, 'w')
+            f.write('Number of Assets: ')
+            f.write(str(len(list_final)))
+            f.write('\n\n')
+            for item in list_final:
+                f.write("Asset #: " + str(item['asset_number']))
+                f.write("\n\t File Name:   " + item['file_name_ext'])
+                f.write("\n\t Asset Label: " + item['asset_label'])
+                f.write("\n\t File Path: " + item['file_path'])
+                f.write("\n\t year Category: " + str(item['year_categories_list']))
+                f.write("\n\t Copyright: " + item['copy_holder'])
+                f.write("\n\t Source: " + item['source'])
+                f.write("\n\t Source ID: " + item['source_id'])
+                f.write("\n\t Date: " + str(item['dict_date']))
+                f.write("\n\t Description: " + item['description'])
+                f.write("\n\t ProjectID: " + item['project_id'])
+                f.write("\n\t details: " + item['details'])
+                f.write("\n\t Link: " + item['link'])
+                f.write("\n\t Alerts: " + item['alerts'])
+                f.write("\n\t Decade: " + item['decade'])
+                f.write("\n\t Keywords: " + item['keywords'])
+                f.write("\n\t Copy Holder: " + item['copy_holder'])
+                f.write("\n\n")
+            f.close()
+
+    #asset = 1
+    #ommit = 4
+    #asset_xml_list2 = []
+    #while asset <= 116:
+    #    if ommit != asset:
+    #        asset_xml_list2.append(asset_xml_list[asset])
+   #     asset = asset + 1
+   # print "Check"
+   # print len(asset_xml_list2)
 
         retrosupport.emamsidecar.generate_sidecar_xml(
             'DlmCO%2frHfqn8MFWM72c2oEXEdfnMecNFm8Mz413k%2fUzRtOsyTzHvBg%3d%3d', asset_xml_list, xml_path)
 
-    # Make directory
+        # Make directory
         archival_media = args.save + "/" + "regular_archival"
         os.makedirs(archival_media)
 
-        # move Files
+    # move Files
         for file in list_final:
             source = file['file_path']
             index = file['file_path'].rfind("/")
@@ -1195,17 +1257,34 @@ def main():
             dest = archival_media + file_name
             os.rename(source, dest)
 
-
-
     print("\n\n\tErrors:\n")
+    if v >= 3:
+        xml_path = args.save + "/" + project_id
+        xml_path_error = xml_path + "_error_log.txt"
+        ferror = open(xml_path_error, "w")
     for error in list_errors:
         if error['asset_label'] != "":
             print(error['asset_label'])
+            if v >= 3:
+                ferror.write(error['asset_label'])
         else:
             print("No Asset Label")
+            if v >= 3:
+                ferror.write("No Asset Label")
         print("\t" + error['error'])
+        if v >= 3:
+            ferror.write("\n\t")
+            ferror.write(error['error'])
+            ferror.write("\n")
         for key, value in error.iteritems():
-            print ("\t" + str(key) + ": " + str(value))
+            ertem = "\t" + str(key) + ": " + str(value) + "\n"
+            print (ertem)
+            if v >= 3:
+                ferror.write(ertem)
+
+    if v >= 3:
+        ferror.close()
+
 
 
 

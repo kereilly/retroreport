@@ -31,36 +31,46 @@ def set_argparse():
         epilog="Please do not feed the Media Manager"
     )
 
-    # Group arguments for batch download
-    group_batch = parser.add_argument_group("Batch Download", "Arguments for Batch Downloading")
+    # Mandatory arguments
+    group_batch = parser.add_argument_group("Mandatory Arguments", "These need to be specified in order for this script"
+                                                                   " to work")
     group_batch.add_argument("-i", "--input", type=str,
                              help="Specify a CSV file for batch download")
-    group_batch.add_argument("-m", "--multi_thread", action="store_true", help="Enable multi-threaded downloads")
-    group_batch.add_argument("-d", "--output_directory", type=str,
+    group_batch.add_argument("-o", "--output_directory", type=str,
                              help="Specify output directory to save to. Should already exist "
-                                  "I won't make the Directory for you. Or maybe I will. Hmmmm.")
-    group_batch.add_argument("-l", "--later", "--later", action="store_true",
-                             help="Don't download any assets. Create xml for later download")
-    group_batch.add_argument("-e", "--extension", type=str,
-                             help="Overide '.mov' extension for assets not downloaded")
-    group_batch.add_argument("-f", "--force_extension", action="store_true",
-                             help="force custom extension even if url found in extension library")
-    group_batch.add_argument("-r", "--project_id", type=str,
-                             help="Override the Google Sheets provided project ID")
+                                  "I won't make the Directory for you.")
+    group_batch.add_argument("-x", "--xml_ingest", type=int, choices=[1, 2, 3, 4], help="Raid location usage")
     # now regular arguments
     parser.add_argument("-v", "--verbosity", type=int, default=1, choices=[0, 1, 2, 3],
                         help="Increase, 2, or decrease, 0, the level of output. 3 is debug mode. Default is 1")
-    parser.add_argument("-p", "--premiere", action="store_true", help="Convert media automatically if it is "
-                                                                      "not premiere compatible")
 
     parser.add_argument("-g", "--google_screener", action="store_true", help="Create mp4's for the google drive")
-
-    parser.add_argument("-o", "--xml_ingest", type=int, choices=[1, 2, 3, 4], help="Raid location usage")
 
     parser.add_argument("-c", "--category", type=str, help="Create custom category. Good for loading in archival"
                                                            "after project has started")
 
-    parser.add_argument("-x", "--screener_location", type=str, help="Overide where the screeners are made")
+    parser.add_argument("-s", "--screener_location", type=str, help="Overide where the screeners are made")
+
+    parser.add_argument("-l", "--later", "--later", action="store_true",
+                             help="Don't download any assets. Create xml for later download")
+
+    parser.add_argument("-e", "--extension", type=str,
+                             help="Overide '.mov' extension for assets not downloaded")
+
+    parser.add_argument("-f", "--force_extension", action="store_true",
+                             help="force custom extension even if url found in extension library")
+
+    parser.add_argument("-r", "--project_id", type=str,
+                             help="Override the Google Sheets provided project ID")
+
+    parser.add_argument("-n", "--story_name", type=str,
+                             help="Over ride the Google Sheets provided Story Name")
+
+    parser.add_argument("-t", "--story_type", type=str,
+                        help="Over ride the Google Sheets provided Story Type")
+
+    parser.add_argument("-a", "--archival_location", type=str,
+                        help="Over ride the Google Sheets provided archival location in the eMAM story category")
 
     # have argparse do its thing
     args = parser.parse_args()
@@ -867,6 +877,59 @@ def choose_extension(job, ext):
             return ext
 
 
+# figures out what the main category should be in eMAM between csv file and user input
+def get_category(csv_dump, args, f, v=1):
+
+    # check the project ID
+    if args.project_id is None:
+        project_id = csv_dump[0][1]  # extract the project ID number
+        if v >= 2:
+            print ("Using google sheet provided project id: " + project_id)
+            if verbosity >= 3:
+                f.write(str("Using Google Sheet provided Project ID: "))
+                f.write(str(project_id))
+                f.write(str("\n"))
+    else:
+        project_id = args.project_id
+        if v >= 2:
+            print ("Using user provided provided project id: " + project_id)
+            if v >= 3:
+                f.write(str("Using User provided project ID: "))
+                f.write(str(project_id))
+                f.write(str("\n"))
+
+    if project_id == "$$ProjectID":
+        if v >= 1:
+            print ("The Google Sheet JavaScript did not provide a project ID")
+            print ("Specify your own project ID with the -r flag. Downloader will not continue")
+            if v >= 3:
+                f.write(str("Google Sheet failed to provide project ID. Program will Exit"))
+                f.close()
+        exit()
+
+# Figure out the main category
+    if csv_dump[0][2] != "" and csv_dump[0][3] != "":
+        categories.append(csv_dump[0][3] + "/" + project_id + " " + csv_dump[0][2] + "/" + csv_dump[0][4])
+        if verbosity >= 2:
+            message = ""
+            for category in categories:
+                message = message + " " + category
+            message = "Category path(s): " + categories
+            print (message)
+            if verbosity >= 3:
+                f.write(str("Google sheet provided "))
+                f.write(str(message))
+                f.write(str("\n"))
+    else:
+        if verbosity >= 1:
+            print ("No category defined\n Will not go on")
+            print ("You must define a category")
+            if verbosity >= 3:
+                f.write(str("Google Sheet failed to provide the category path\n"))
+                f.write(str("program will exit"))
+                f.close()
+        exit()
+
 def main():
 
     print("")  # a nice blank space after the user puts in all the input
@@ -905,73 +968,24 @@ def main():
         f.write(str("\nEnd user input\n\n"))
         f.write(str("Checking automated required arguments:\n"))
 
-    # Multi threading not supported yet. Warn user if enabled
-    if args.multi_thread:
-        if verbosity >= 1:
-            print ("You enabled Multi threading. At this point it is not supported but hopefully soon")
-            print ("The -m flag will be ignored\n")
-
     # put all our jobs from the csv file into an array
     csv_dump = csv_process(csv_path, verbosity)  # ingest the csv file
     csv_first_pass = []  # create our list to put jobs in
 
+    # In tracker version 1.0 [0][0] is triacker version [0][1] project ID [0][2] Story name [0][3] story type
+    # and [0][4] location of archival footage inside the emam story category
+
     tracker_version = csv_dump[0][0]    # the all important tracker version so the right columns get
     # the correct meta data assignment
 
-    # check the project ID
-    if args.project_id is None:
-        project_id = csv_dump[0][1]  # extract the project ID number
-        if verbosity >= 2:
-            print ("Using google sheet provided project id: " + project_id)
-            if verbosity >= 3:
-                f.write(str("Using Google Sheet provided Project ID: "))
-                f.write(str(project_id))
-                f.write(str("\n"))
-    else:
-        project_id = args.project_id
-        if verbosity >= 2:
-            print ("Using user provided provided project id: " + project_id)
-            if verbosity >= 3:
-                f.write(str("Using User provided project ID: "))
-                f.write(str(project_id))
-                f.write(str("\n"))
-
-    if project_id == "$$ProjectID":
-        if verbosity >= 1:
-            print ("The Google Sheet JavaScript did not provide a project ID")
-            print ("Specify your own project ID with the -r flag. Downloader will not continue")
-            if verbosity >= 3:
-                f.write(str("Google Sheet failed to provide project ID. Program will Exit"))
-                f.close()
-        exit()
+    # Figure out main eMAM category
+    main_category = get_category(csv_dump, args, f, verbosity)
 
     # Grab the eMAM category for assets
     categories = []
     if args.category is not None:
         if args.category != "":
             categories.append(args.category)
-
-    if csv_dump[0][2] != "" and csv_dump[0][3] != "":
-        categories.append(csv_dump[0][3] + "/" + project_id + " " + csv_dump[0][2] + "/" + csv_dump[0][4])
-        if verbosity >= 2:
-            message = ""
-            for category in categories:
-                message = message + " " + category
-            message = "Category path(s): " + categories
-            print (message)
-            if verbosity >= 3:
-                f.write(str("Google sheet provided "))
-                f.write(str(message))
-                f.write(str("\n"))
-    else:
-        if verbosity >= 1:
-            print ("No category defined\n Will not go on")
-            print ("You must define a category")
-            if verbosity >= 3:
-                f.write(str("Google Sheet failed to provide the category path\n"))
-                f.write(str("program will exit"))
-                f.close()
-        exit()
 
     # Take care of keywords
     key_words = ""
